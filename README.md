@@ -40,6 +40,27 @@ sorbet-deadcode -x vendor/ -x tmp/ .
 sorbet-deadcode app/ lib/
 ```
 
+### Verified Mode (Prism + ripgrep)
+
+By default, `sorbet-deadcode` uses Prism-based static analysis only. Add `--verify`
+to run a follow-up ripgrep pass that checks whether each candidate's name actually
+appears elsewhere in the codebase. This eliminates false positives much faster than
+individual searches.
+
+```bash
+# Fast mode (Prism only)
+sorbet-deadcode .
+
+# Verified mode (Prism + ripgrep confirmation)
+sorbet-deadcode --verify .
+
+# Verified mode with project root and exclusions
+sorbet-deadcode --verify --project-root /path/to/project -x vendor/ app/ lib/
+```
+
+The `--verify` flag works with all analysis modes (`--lsp`, `--hybrid`, `--file-table`).
+It requires `rg` (ripgrep) to be installed on your system.
+
 ## How It Works
 
 1. **Parse** all Ruby files with [Prism](https://github.com/ruby/prism)

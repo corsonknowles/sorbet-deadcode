@@ -13,6 +13,7 @@ require_relative "sorbet_deadcode/lsp/client"
 require_relative "sorbet_deadcode/lsp/dead_code_finder"
 require_relative "sorbet_deadcode/lsp/hybrid_finder"
 require_relative "sorbet_deadcode/sorbet/file_table_analyzer"
+require_relative "sorbet_deadcode/verifier/ripgrep_verifier"
 
 module SorbetDeadcode
   class Error < StandardError; end
@@ -53,6 +54,15 @@ module SorbetDeadcode
         exclude_paths: exclude_paths,
       )
       analyzer.run
+    end
+
+    def analyze_and_verify(paths:, project_root: ".", exclude_paths: [])
+      candidates = analyze(paths, exclude_paths: exclude_paths)
+      verifier = Verifier::RipgrepVerifier.new(
+        project_root: project_root,
+        exclude_paths: exclude_paths,
+      )
+      verifier.verify(candidates)
     end
   end
 end

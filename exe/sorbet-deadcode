@@ -11,6 +11,7 @@ options = {
   lsp: false,
   hybrid: false,
   file_table: false,
+  verify: false,
   parallel: 10,
   project_root: ".",
 }
@@ -36,6 +37,10 @@ OptionParser.new do |opts|
 
   opts.on("--file-table", "Use Sorbet file-table dump (fastest, single pass)") do
     options[:file_table] = true
+  end
+
+  opts.on("--verify", "Verify candidates with ripgrep (reduces false positives)") do
+    options[:verify] = true
   end
 
   opts.on("--parallel N", Integer, "Number of concurrent LSP queries (default: 10, use with --lsp or --hybrid)") do |n|
@@ -91,6 +96,14 @@ else
     options[:paths],
     exclude_paths: options[:exclude_paths],
   )
+end
+
+if options[:verify] && !results.empty?
+  verifier = SorbetDeadcode::Verifier::RipgrepVerifier.new(
+    project_root: options[:project_root],
+    exclude_paths: options[:exclude_paths],
+  )
+  results = verifier.verify(results)
 end
 
 if results.empty?
