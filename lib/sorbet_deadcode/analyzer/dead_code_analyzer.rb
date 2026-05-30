@@ -20,8 +20,8 @@ module SorbetDeadcode
       end
 
       def dead_definitions
-        alive_names = build_alive_set
-        @definitions.reject { |d| alive?(d, alive_names) }
+        ref_index = build_reference_index
+        @definitions.reject { |d| alive?(d, ref_index) }
       end
 
       private
@@ -65,66 +65,64 @@ module SorbetDeadcode
       end
 
       # Determine if a definition is alive based on references
-      def alive?(definition, alive_names)
+      def alive?(definition, ref_index)
         case definition.kind
         when :class, :module
-          alive_names[:constants].include?(definition.name) ||
-            alive_names[:constants].include?(definition.full_name)
+          ref_index[:constants].include?(definition.name) ||
+            ref_index[:constants].include?(definition.full_name)
         when :constant
-          alive_names[:constants].include?(definition.name) ||
-            alive_names[:constants].include?(definition.full_name)
+          ref_index[:constants].include?(definition.name) ||
+            ref_index[:constants].include?(definition.full_name)
         when :method, :attr_reader, :attr_writer
-          typed_alive?(definition) || name_alive?(definition, alive_names)
+          typed_alive?(definition, ref_index) || name_alive?(definition, ref_index)
         else
           false
         end
       end
 
-      # Type-aware liveness: if ANY reference specifies this definition's
-      # owner type, only that typed reference counts.
-      def typed_alive?(definition)
+      # Type-aware liveness: if ANY typed reference for this name specifies
+      # this definition's owner type, it's alive. O(1) hash lookup + small
+      # set scan on same-name typed refs only.
+      def typed_alive?(definition, ref_index)
         return false unless definition.owner_name
 
-        @references.any? do |ref|
-          ref.kind == :method &&
-            ref.name == definition.name &&
-            ref.typed? &&
-            ref.receiver_type == definition.owner_name
-        end
+        typed_refs = ref_index[:typed_by_name][definition.name]
+        return false unless typed_refs
+
+        typed_refs.any? { |receiver_type| receiver_type == definition.owner_name }
       end
 
-      # Name-based liveness: fallback when no typed references exist.
-      # A definition is alive if any untyped reference shares its name.
-      def name_alive?(definition, alive_names)
-        # If there are typed references for this name but none match our owner,
-        # the definition is dead even though the name appears in references.
-        has_typed_refs = @references.any? { |r|
-          r.kind == :method && r.name == definition.name && r.typed?
-        }
-
-        if has_typed_refs
-          # All references to this name are typed — none matched our owner
+      # Name-based liveness: fallback when no typed references exist for this name.
+      def name_alive?(definition, ref_index)
+        if ref_index[:typed_by_name].key?(definition.name)
+          # Typed references exist for this name but none matched our owner
           # in typed_alive?, so this definition is dead.
           false
         else
-          alive_names[:methods].include?(definition.name)
+          ref_index[:untyped_methods].include?(definition.name)
         end
       end
 
-      def build_alive_set
-        methods = Set.new
+      # Pre-index all references into hash-based lookups for O(1) access.
+      def build_reference_index
+        untyped_methods = Set.new
         constants = Set.new
+        typed_by_name = {}
 
         @references.each do |ref|
           case ref.kind
           when :method
-            methods << ref.name unless ref.typed?
+            if ref.typed?
+              (typed_by_name[ref.name] ||= Set.new) << ref.receiver_type
+            else
+              untyped_methods << ref.name
+            end
           when :constant
             constants << ref.name
           end
         end
 
-        { methods: methods, constants: constants }
+        { untyped_methods: untyped_methods, constants: constants, typed_by_name: typed_by_name }
       end
     end
 
