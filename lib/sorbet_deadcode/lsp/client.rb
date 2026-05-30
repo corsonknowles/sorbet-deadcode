@@ -34,6 +34,21 @@ module SorbetDeadcode
         result || []
       end
 
+      def async_references(file_path, line, column)
+        uri = "file://#{File.expand_path(file_path)}"
+        send_did_open(uri, file_path)
+
+        send_request_async("textDocument/references", {
+          "textDocument" => { "uri" => uri },
+          "position" => { "line" => line, "character" => column },
+          "context" => { "includeDeclaration" => false },
+        })
+      end
+
+      def collect_response(expected_id)
+        read_response(expected_id)
+      end
+
       def shutdown
         return unless @started
 
@@ -66,6 +81,10 @@ module SorbetDeadcode
           "Run 'srb tc' first to build the cache. " \
           "LSP startup will be slow without it.",
         )
+      end
+
+      def buffered_responses
+        @buffered_responses ||= {}
       end
 
       def start_server
@@ -119,6 +138,18 @@ module SorbetDeadcode
         read_response(id)
       end
 
+      def send_request_async(method, params)
+        id = next_id
+        message = {
+          "jsonrpc" => "2.0",
+          "id" => id,
+          "method" => method,
+          "params" => params,
+        }
+        write_message(message)
+        id
+      end
+
       def send_notification(method, params)
         message = {
           "jsonrpc" => "2.0",
@@ -137,6 +168,12 @@ module SorbetDeadcode
       end
 
       def read_response(expected_id)
+        if buffered_responses.key?(expected_id)
+          msg = buffered_responses.delete(expected_id)
+          raise Error, "LSP error: #{msg["error"]["message"]}" if msg.key?("error")
+          return msg["result"]
+        end
+
         loop do
           message = read_message
           return nil unless message
@@ -146,8 +183,9 @@ module SorbetDeadcode
               raise Error, "LSP error: #{message["error"]["message"]}"
             end
             return message["result"]
+          elsif message.key?("id")
+            buffered_responses[message["id"]] = message
           end
-          # Skip notifications and responses with other IDs
         end
       end
 

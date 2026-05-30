@@ -5,10 +5,11 @@ module SorbetDeadcode
     class DeadCodeFinder
       attr_reader :dead_definitions
 
-      def initialize(project_root:, paths:, exclude_paths: [])
+      def initialize(project_root:, paths:, exclude_paths: [], parallel: 1)
         @project_root = File.expand_path(project_root)
         @paths = Array(paths)
         @exclude_paths = Array(exclude_paths)
+        @parallel = [parallel.to_i, 1].max
         @dead_definitions = []
       end
 
@@ -62,6 +63,14 @@ module SorbetDeadcode
       end
 
       def find_dead(client, definitions)
+        if @parallel > 1
+          find_dead_parallel(client, definitions)
+        else
+          find_dead_sequential(client, definitions)
+        end
+      end
+
+      def find_dead_sequential(client, definitions)
         dead = []
         total = definitions.size
 
@@ -72,7 +81,7 @@ module SorbetDeadcode
           file_path, line_str = location.split(":")
           next unless file_path && line_str
 
-          line = line_str.to_i - 1 # LSP is 0-indexed
+          line = line_str.to_i - 1
           column = detect_column(file_path, line, defn)
 
           refs = client.references(file_path, line, column)
@@ -80,6 +89,42 @@ module SorbetDeadcode
           live_refs = filter_references(refs, file_path, line)
 
           dead << defn if live_refs.empty?
+        end
+
+        $stderr.puts
+        dead
+      end
+
+      def find_dead_parallel(client, definitions)
+        dead = []
+        total = definitions.size
+        checked = 0
+
+        definitions.each_slice(@parallel) do |batch|
+          request_ids = batch.map do |defn|
+            location = defn.location
+            file_path, line_str = location.split(":")
+            next nil unless file_path && line_str
+
+            line = line_str.to_i - 1
+            column = detect_column(file_path, line, defn)
+            client.async_references(file_path, line, column)
+          end
+
+          batch.zip(request_ids).each do |defn, req_id|
+            checked += 1
+            $stderr.print "\rChecking definitions: #{checked}/#{total}"
+
+            next unless req_id
+
+            refs = client.collect_response(req_id) || []
+            location = defn.location
+            file_path, line_str = location.split(":")
+            line = line_str.to_i - 1
+
+            live_refs = filter_references(refs, file_path, line)
+            dead << defn if live_refs.empty?
+          end
         end
 
         $stderr.puts

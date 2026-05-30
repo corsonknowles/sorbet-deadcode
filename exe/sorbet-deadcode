@@ -9,6 +9,9 @@ options = {
   exclude_paths: ["/spec/", "/test/"],
   include_specs: false,
   lsp: false,
+  hybrid: false,
+  file_table: false,
+  parallel: 10,
   project_root: ".",
 }
 
@@ -27,7 +30,19 @@ OptionParser.new do |opts|
     options[:lsp] = true
   end
 
-  opts.on("--project-root DIR", "Project root where sorbet/ config lives (default: .)") do |dir|
+  opts.on("--hybrid", "Prism-first pass, LSP validation of candidates only (recommended)") do
+    options[:hybrid] = true
+  end
+
+  opts.on("--file-table", "Use Sorbet file-table dump (fastest, single pass)") do
+    options[:file_table] = true
+  end
+
+  opts.on("--parallel N", Integer, "Number of concurrent LSP queries (default: 10, use with --lsp or --hybrid)") do |n|
+    options[:parallel] = n
+  end
+
+  opts.on("--project-root DIR", "Project root where sorbet/ lives (default: .)") do |dir|
     options[:project_root] = dir
   end
 
@@ -45,11 +60,31 @@ end.parse!
 options[:paths] = ARGV.empty? ? ["."] : ARGV
 options[:exclude_paths] = [] if options[:include_specs]
 
-results = if options[:lsp]
+mode_count = [options[:lsp], options[:hybrid], options[:file_table]].count(true)
+if mode_count > 1
+  $stderr.puts "Error: Only one of --lsp, --hybrid, or --file-table may be specified."
+  exit 1
+end
+
+results = if options[:hybrid]
+  SorbetDeadcode.analyze_hybrid(
+    project_root: options[:project_root],
+    paths: options[:paths],
+    exclude_paths: options[:exclude_paths],
+    parallel: options[:parallel],
+  )
+elsif options[:file_table]
+  SorbetDeadcode.analyze_file_table(
+    project_root: options[:project_root],
+    paths: options[:paths],
+    exclude_paths: options[:exclude_paths],
+  )
+elsif options[:lsp]
   SorbetDeadcode.analyze_with_lsp(
     project_root: options[:project_root],
     paths: options[:paths],
     exclude_paths: options[:exclude_paths],
+    parallel: options[:parallel],
   )
 else
   SorbetDeadcode.analyze(

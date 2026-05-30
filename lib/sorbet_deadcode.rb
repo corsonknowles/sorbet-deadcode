@@ -11,6 +11,8 @@ require_relative "sorbet_deadcode/resolver/type_resolver"
 require_relative "sorbet_deadcode/analyzer/dead_code_analyzer"
 require_relative "sorbet_deadcode/lsp/client"
 require_relative "sorbet_deadcode/lsp/dead_code_finder"
+require_relative "sorbet_deadcode/lsp/hybrid_finder"
+require_relative "sorbet_deadcode/sorbet/file_table_analyzer"
 
 module SorbetDeadcode
   class Error < StandardError; end
@@ -24,13 +26,33 @@ module SorbetDeadcode
       analyzer.run
     end
 
-    def analyze_with_lsp(project_root:, paths:, exclude_paths: [])
+    def analyze_with_lsp(project_root:, paths:, exclude_paths: [], parallel: 1)
       finder = Lsp::DeadCodeFinder.new(
         project_root: project_root,
         paths: paths,
         exclude_paths: exclude_paths,
+        parallel: parallel,
       )
       finder.run
+    end
+
+    def analyze_hybrid(project_root:, paths:, exclude_paths: [], parallel: 1)
+      finder = Lsp::HybridFinder.new(
+        project_root: project_root,
+        paths: paths,
+        exclude_paths: exclude_paths,
+        parallel: parallel,
+      )
+      finder.run
+    end
+
+    def analyze_file_table(project_root:, paths:, exclude_paths: [])
+      analyzer = Sorbet::FileTableAnalyzer.new(
+        project_root: project_root,
+        paths: paths,
+        exclude_paths: exclude_paths,
+      )
+      analyzer.run
     end
   end
 end
