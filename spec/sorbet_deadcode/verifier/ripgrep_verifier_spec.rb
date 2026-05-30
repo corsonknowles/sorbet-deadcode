@@ -24,8 +24,8 @@ module SorbetDeadcode
 
         assert_includes verified_names, "Company#old_billing_plan"
         assert_includes verified_names, "UserService#unused_helper"
-        assert_includes verified_names, "NotificationService#send_deprecated_alert"
         assert_includes verified_names, "Report#archive"
+        refute_includes verified_names, "NotificationService#send_deprecated_alert"
       end
 
       def test_methods_with_references_elsewhere_are_filtered_out
@@ -69,8 +69,8 @@ module SorbetDeadcode
 
         assert_includes verified_names, "Company#old_billing_plan"
         assert_includes verified_names, "UserService#unused_helper"
-        assert_includes verified_names, "NotificationService#send_deprecated_alert"
         assert_includes verified_names, "Report#archive"
+        refute_includes verified_names, "NotificationService#send_deprecated_alert"
       end
     end
   end

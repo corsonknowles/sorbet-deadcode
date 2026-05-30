@@ -11,7 +11,9 @@ class NotificationService
     "reminder sent"
   end
 
-  # Dead: never dispatched
+  # Not statically dead: dispatch/legacy_dispatch build the method name as
+  # :"send_#{type}", so any send_* method may be reached at runtime. The
+  # interpolated-dispatch detector keeps the whole send_* family alive.
   def send_deprecated_alert
     "deprecated"
   end

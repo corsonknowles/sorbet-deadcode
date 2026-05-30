@@ -72,12 +72,33 @@ module SorbetDeadcode
             ref_index[:constants].include?(definition.full_name)
         when :constant
           ref_index[:constants].include?(definition.name) ||
-            ref_index[:constants].include?(definition.full_name)
+            ref_index[:constants].include?(definition.full_name) ||
+            co_located_alive?(definition, ref_index)
         when :method, :attr_reader, :attr_writer
-          typed_alive?(definition, ref_index) || name_alive?(definition, ref_index)
+          dynamically_dispatched?(definition, ref_index) ||
+            typed_alive?(definition, ref_index) ||
+            name_alive?(definition, ref_index)
         else
           false
         end
+      end
+
+      # A constant whose source is nested inside another (still-alive) constant
+      # must not be reported dead — removing the parent would remove it.
+      def co_located_alive?(definition, ref_index)
+        definition.co_located_names.any? do |child|
+          full = definition.owner_name ? "#{definition.owner_name}::#{child}" : child
+          ref_index[:constants].include?(child) || ref_index[:constants].include?(full)
+        end
+      end
+
+      # Conservatively keep methods reachable through dynamic dispatch alive:
+      # - their name starts with a collected interpolation prefix (`dump_#{x}`), or
+      # - their owning namespace contains a non-literal send/__send__/public_send.
+      def dynamically_dispatched?(definition, ref_index)
+        return true if ref_index[:method_prefixes].any? { |p| definition.name.start_with?(p) }
+
+        !!definition.owner_name && ref_index[:dynamic_namespaces].include?(definition.owner_name)
       end
 
       # Type-aware liveness: if ANY typed reference for this name specifies
@@ -108,6 +129,8 @@ module SorbetDeadcode
         untyped_methods = Set.new
         constants = Set.new
         typed_by_name = {}
+        method_prefixes = Set.new
+        dynamic_namespaces = Set.new
 
         @references.each do |ref|
           case ref.kind
@@ -119,10 +142,20 @@ module SorbetDeadcode
             end
           when :constant
             constants << ref.name
+          when :method_prefix
+            method_prefixes << ref.name
+          when :dynamic_namespace
+            dynamic_namespaces << ref.name
           end
         end
 
-        { untyped_methods: untyped_methods, constants: constants, typed_by_name: typed_by_name }
+        {
+          untyped_methods: untyped_methods,
+          constants: constants,
+          typed_by_name: typed_by_name,
+          method_prefixes: method_prefixes,
+          dynamic_namespaces: dynamic_namespaces,
+        }
       end
     end
 

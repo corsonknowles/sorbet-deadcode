@@ -121,16 +121,42 @@ module SorbetDeadcode
 
       def collect_dynamic_dispatch(node, location)
         first_arg = node.arguments.arguments.first
-        return unless first_arg.is_a?(Prism::SymbolNode)
 
-        receiver_type = node.receiver ? resolve_receiver_type(node.receiver) : nil
+        if first_arg.is_a?(Prism::SymbolNode)
+          # Literal symbol: precise method reference.
+          receiver_type = node.receiver ? resolve_receiver_type(node.receiver) : nil
+          @references << Reference.new(
+            name: first_arg.unescaped,
+            location: location,
+            kind: :method,
+            receiver_type: receiver_type,
+          )
+          return
+        end
 
-        @references << Reference.new(
-          name: first_arg.unescaped,
-          location: location,
-          kind: :method,
-          receiver_type: receiver_type,
-        )
+        # Non-literal target: the method name is built at runtime.
+        prefix = literal_prefix(first_arg)
+        if prefix && !prefix.empty?
+          # e.g. public_send("dump_#{type}") => any `dump_*` method may be reached.
+          @references << Reference.new(name: prefix, location: location, kind: :method_prefix)
+        elsif current_namespace
+          # e.g. __send__(method_name) inside a class => any method in this
+          # namespace may be reached; exclude them from dead results.
+          @references << Reference.new(name: current_namespace, location: location, kind: :dynamic_namespace)
+        end
+      end
+
+      # Extract the leading literal text of an interpolated string/symbol, e.g.
+      # `"dump_#{x}"` or `:"dump_#{x}"` => "dump_". Returns nil if not interpolated
+      # or has no leading literal part.
+      def literal_prefix(node)
+        node = node.receiver if node.is_a?(Prism::CallNode) && node.receiver # e.g. "...".to_sym
+        return nil unless node.is_a?(Prism::InterpolatedStringNode) || node.is_a?(Prism::InterpolatedSymbolNode)
+
+        first = node.parts.first
+        return nil unless first.is_a?(Prism::StringNode)
+
+        first.unescaped
       end
 
       def resolve_receiver_type(receiver_node)

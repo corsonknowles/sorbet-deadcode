@@ -184,6 +184,104 @@ module SorbetDeadcode
         assert_includes dead_names, "UNUSED"
       end
 
+      def test_interpolated_dispatch_keeps_prefix_family_alive
+        analyzer = analyze_source(<<~RUBY)
+          class Serializer
+            def dump_company
+            end
+
+            def dump_employee
+            end
+
+            def render(type)
+              public_send("dump_\#{type}")
+            end
+          end
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "dump_company"
+        refute_includes dead_names, "dump_employee"
+      end
+
+      def test_interpolated_dispatch_does_not_protect_other_prefixes
+        analyzer = analyze_source(<<~RUBY)
+          class Serializer
+            def dump_company
+            end
+
+            def truly_dead
+            end
+
+            def render(type)
+              public_send("dump_\#{type}")
+            end
+          end
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "dump_company"
+        assert_includes dead_names, "truly_dead"
+      end
+
+      def test_dynamic_dispatch_on_variable_protects_namespace
+        # __send__(method_name) where method_name is a local variable: we can't
+        # know the target, so every method in the class is kept alive.
+        analyzer = analyze_source(<<~RUBY)
+          class MemberSerializer
+            def dump_company_member
+            end
+
+            def dump_accountant
+            end
+
+            def dump(member)
+              method_name = "dump_\#{member.class.name}".to_sym
+              __send__(method_name, member)
+            end
+          end
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "dump_company_member"
+        refute_includes dead_names, "dump_accountant"
+      end
+
+      def test_inline_constant_in_array_keeps_parent_alive
+        # PARENT defines CHILD as a side effect; CHILD is referenced, so deleting
+        # PARENT would break CHILD. PARENT must not be reported dead.
+        analyzer = analyze_source(<<~RUBY)
+          class Config
+            CATEGORIES = [
+              CATEGORY_A = "a",
+              CATEGORY_B = "b",
+            ].freeze
+          end
+
+          Config::CATEGORY_A
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "CATEGORIES"
+        refute_includes dead_names, "CATEGORY_A"
+      end
+
+      def test_inline_constant_parent_dead_when_no_child_referenced
+        analyzer = analyze_source(<<~RUBY)
+          class Config
+            CATEGORIES = [
+              CATEGORY_A = "a",
+              CATEGORY_B = "b",
+            ].freeze
+          end
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        # No child is referenced, so the whole group is genuinely dead.
+        assert_includes dead_names, "CATEGORIES"
+        assert_includes dead_names, "CATEGORY_A"
+      end
+
       def test_module_alive_when_referenced
         analyzer = analyze_source(<<~RUBY)
           module UsedModule
