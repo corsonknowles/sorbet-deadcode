@@ -1,0 +1,51 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "sorbet_deadcode"
+require "optparse"
+
+options = { paths: [], exclude_paths: [] }
+
+OptionParser.new do |opts|
+  opts.banner = "Usage: sorbet-deadcode [options] PATH..."
+
+  opts.on("-x", "--exclude PATTERN", "Exclude paths containing PATTERN") do |pattern|
+    options[:exclude_paths] << pattern
+  end
+
+  opts.on("--no-specs", "Exclude spec/ and test/ directories") do
+    options[:exclude_paths].push("/spec/", "/test/")
+  end
+
+  opts.on("-h", "--help", "Show this help") do
+    puts opts
+    exit
+  end
+
+  opts.on("-v", "--version", "Show version") do
+    puts SorbetDeadcode::VERSION
+    exit
+  end
+end.parse!
+
+options[:paths] = ARGV.empty? ? ["."] : ARGV
+
+results = SorbetDeadcode.analyze(
+  options[:paths],
+  exclude_paths: options[:exclude_paths],
+)
+
+if results.empty?
+  $stderr.puts "No dead code found."
+  exit 0
+end
+
+$stderr.puts "Found #{results.size} dead code candidates:\n\n"
+
+results.sort_by(&:full_name).each do |defn|
+  puts "  #{defn.kind} #{defn.full_name}"
+  puts "    #{defn.location}"
+end
+
+puts "\n#{results.size} dead code candidates found."
+exit 1
