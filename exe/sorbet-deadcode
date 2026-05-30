@@ -4,7 +4,13 @@
 require "sorbet_deadcode"
 require "optparse"
 
-options = { paths: [], exclude_paths: ["/spec/", "/test/"], include_specs: false }
+options = {
+  paths: [],
+  exclude_paths: ["/spec/", "/test/"],
+  include_specs: false,
+  lsp: false,
+  project_root: ".",
+}
 
 OptionParser.new do |opts|
   opts.banner = "Usage: sorbet-deadcode [options] PATH..."
@@ -15,6 +21,14 @@ OptionParser.new do |opts|
 
   opts.on("--include-specs", "Include spec/ and test/ directories in analysis") do
     options[:include_specs] = true
+  end
+
+  opts.on("--lsp", "Use Sorbet LSP for type-aware analysis (requires sorbet setup)") do
+    options[:lsp] = true
+  end
+
+  opts.on("--project-root DIR", "Project root where sorbet/ config lives (default: .)") do |dir|
+    options[:project_root] = dir
   end
 
   opts.on("-h", "--help", "Show this help") do
@@ -31,10 +45,18 @@ end.parse!
 options[:paths] = ARGV.empty? ? ["."] : ARGV
 options[:exclude_paths] = [] if options[:include_specs]
 
-results = SorbetDeadcode.analyze(
-  options[:paths],
-  exclude_paths: options[:exclude_paths],
-)
+results = if options[:lsp]
+  SorbetDeadcode.analyze_with_lsp(
+    project_root: options[:project_root],
+    paths: options[:paths],
+    exclude_paths: options[:exclude_paths],
+  )
+else
+  SorbetDeadcode.analyze(
+    options[:paths],
+    exclude_paths: options[:exclude_paths],
+  )
+end
 
 if results.empty?
   $stderr.puts "No dead code found."
