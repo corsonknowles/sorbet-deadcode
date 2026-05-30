@@ -85,10 +85,10 @@ module SorbetDeadcode
           column = detect_column(file_path, line, defn)
 
           refs = client.references(file_path, line, column)
-
           live_refs = filter_references(refs, file_path, line)
-
           dead << defn if live_refs.empty?
+        rescue Client::Error => e
+          $stderr.puts "\n  Skipping #{defn.full_name}: #{e.message}"
         end
 
         $stderr.puts
@@ -108,7 +108,12 @@ module SorbetDeadcode
 
             line = line_str.to_i - 1
             column = detect_column(file_path, line, defn)
-            client.async_references(file_path, line, column)
+            begin
+              client.async_references(file_path, line, column)
+            rescue Client::Error => e
+              $stderr.puts "\n  Skipping #{defn.full_name}: #{e.message}"
+              nil
+            end
           end
 
           batch.zip(request_ids).each do |defn, req_id|
@@ -117,7 +122,13 @@ module SorbetDeadcode
 
             next unless req_id
 
-            refs = client.collect_response(req_id) || []
+            begin
+              refs = client.collect_response(req_id) || []
+            rescue Client::Error => e
+              $stderr.puts "\n  Skipping #{defn.full_name}: #{e.message}"
+              next
+            end
+
             location = defn.location
             file_path, line_str = location.split(":")
             line = line_str.to_i - 1
