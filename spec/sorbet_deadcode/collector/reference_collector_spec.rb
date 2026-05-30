@@ -101,6 +101,177 @@ module SorbetDeadcode
         assert_includes refs.map(&:name), "display_name"
       end
 
+      def test_self_receiver_resolves_to_namespace_with_resolver
+        resolver = Resolver::TypeResolver.new
+        refs = collect(<<~RUBY, type_resolver: resolver)
+          class MyClass
+            def call
+              self.other_method
+            end
+          end
+        RUBY
+
+        ref = refs.find { |r| r.name == "other_method" }
+        assert_equal "MyClass", ref.receiver_type
+      end
+
+      def test_constant_path_receiver_resolves_to_slice
+        resolver = Resolver::TypeResolver.new
+        refs = collect(<<~RUBY, type_resolver: resolver)
+          Foo::Bar.build
+        RUBY
+
+        ref = refs.find { |r| r.name == "build" }
+        assert_equal "Foo::Bar", ref.receiver_type
+      end
+
+      def test_constant_read_receiver_resolves_to_name
+        resolver = Resolver::TypeResolver.new
+        refs = collect(<<~RUBY, type_resolver: resolver)
+          Widget.create
+        RUBY
+
+        ref = refs.find { |r| r.name == "create" }
+        assert_equal "Widget", ref.receiver_type
+      end
+
+      def test_interpolated_string_dispatch_collects_prefix
+        refs = collect(<<~'RUBY')
+          public_send("dump_#{type}")
+        RUBY
+
+        prefix = refs.find { |r| r.kind == :method_prefix }
+        assert_equal "dump_", prefix.name
+      end
+
+      def test_interpolated_symbol_dispatch_collects_prefix
+        refs = collect(<<~'RUBY')
+          public_send(:"render_#{type}")
+        RUBY
+
+        prefix = refs.find { |r| r.kind == :method_prefix }
+        assert_equal "render_", prefix.name
+      end
+
+      def test_interpolated_string_to_sym_dispatch_collects_prefix
+        refs = collect(<<~'RUBY')
+          public_send("build_#{type}".to_sym)
+        RUBY
+
+        prefix = refs.find { |r| r.kind == :method_prefix }
+        assert_equal "build_", prefix.name
+      end
+
+      def test_variable_dispatch_inside_namespace_marks_namespace
+        refs = collect(<<~RUBY)
+          class Serializer
+            def render(method_name)
+              __send__(method_name)
+            end
+          end
+        RUBY
+
+        ns = refs.find { |r| r.kind == :dynamic_namespace }
+        assert_equal "Serializer", ns.name
+      end
+
+      def test_variable_dispatch_outside_namespace_collects_nothing
+        refs = collect(<<~RUBY)
+          send(method_name)
+        RUBY
+
+        refute refs.any? { |r| r.kind == :method_prefix || r.kind == :dynamic_namespace }
+      end
+
+      def test_interpolation_leading_with_expression_has_no_prefix
+        # Starts with the interpolation, so there's no literal prefix to collect.
+        refs = collect(<<~'RUBY')
+          class Worker
+            def go(type)
+              public_send("#{type}_suffix")
+            end
+          end
+        RUBY
+
+        refute refs.any? { |r| r.kind == :method_prefix }
+        assert refs.any? { |r| r.kind == :dynamic_namespace }
+      end
+
+      def test_bare_send_with_symbol_has_no_receiver_type
+        refs = collect(<<~RUBY)
+          send(:bare_target)
+        RUBY
+
+        ref = refs.find { |r| r.name == "bare_target" }
+        assert ref
+        refute ref.typed?
+      end
+
+      def test_param_types_registered_and_cleared_for_sigged_method
+        resolver = Resolver::TypeResolver.new
+        resolver.register_method(
+          owner: "Service",
+          method_name: "call",
+          return_type: "String",
+          param_types: { "user" => "User" },
+        )
+        resolver.register_method(owner: "User", method_name: "name", return_type: "String")
+
+        refs = collect(<<~RUBY, type_resolver: resolver)
+          class Service
+            def call(user)
+              user.name
+            end
+          end
+        RUBY
+
+        name_ref = refs.find { |r| r.name == "name" }
+        assert_equal "User", name_ref.receiver_type
+      end
+
+      def test_compound_constant_path_definition_is_not_a_reference
+        refs = collect(<<~RUBY)
+          class Foo::Bar
+          end
+        RUBY
+
+        # The `Foo::Bar` in the class declaration is a definition, not a reference.
+        refute refs.any? { |r| r.kind == :constant && r.name == "Foo::Bar" }
+      end
+
+      def test_local_variable_write_with_non_call_value_is_ignored
+        resolver = Resolver::TypeResolver.new
+        refs = collect(<<~RUBY, type_resolver: resolver)
+          class Service
+            def call
+              count = 42
+              count
+            end
+          end
+        RUBY
+
+        # No crash, and the literal assignment didn't register a type.
+        assert_kind_of Array, refs
+      end
+
+      def test_local_variable_type_tracking
+        resolver = Resolver::TypeResolver.new
+        resolver.register_method(owner: "Factory", method_name: "build", return_type: "Widget")
+        resolver.register_method(owner: "Widget", method_name: "ship", return_type: "Status")
+
+        refs = collect(<<~RUBY, type_resolver: resolver)
+          class Service
+            def call
+              widget = Factory.build
+              widget.ship
+            end
+          end
+        RUBY
+
+        ship = refs.find { |r| r.name == "ship" }
+        assert_equal "Widget", ship.receiver_type
+      end
+
       private
 
       def collect(source, type_resolver: nil)

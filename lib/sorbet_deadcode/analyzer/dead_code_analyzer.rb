@@ -213,17 +213,9 @@ module SorbetDeadcode
         info = { params: {}, returns: nil }
 
         block = sig_node.block
-        return info unless block
+        return info unless block.respond_to?(:body) && block.body
 
-        body = case block
-        when Prism::BlockNode then block.body
-        when Prism::LambdaNode then block.body
-        else return info
-        end
-
-        return info unless body
-
-        visit_sig_chain(body, info)
+        visit_sig_chain(block.body, info)
         info
       end
 

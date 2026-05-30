@@ -153,6 +153,194 @@ module SorbetDeadcode
         refute_includes dead_names, "UsedClass"
       end
 
+      def test_find_dead_keeps_other_kinds
+        analyzer = build_analyzer
+        # A constant definition falls through to the `else => true` branch and is
+        # always retained (this analyzer only reasons about classes/methods).
+        definitions = [
+          Definition.new(name: "SOME_CONST", full_name: "Foo::SOME_CONST", kind: :constant, location: "t:1"),
+        ]
+        dead = analyzer.send(:find_dead, definitions, [])
+        assert_equal ["SOME_CONST"], dead.map(&:name)
+      end
+
+      def test_run_returns_empty_when_symbol_table_has_no_definitions
+        analyzer = build_analyzer
+        analyzer.define_singleton_method(:load_symbol_table) do
+          { "name" => { "kind" => "CONSTANT", "name" => "<root>" }, "kind" => "CLASS_OR_MODULE", "children" => [] }
+        end
+        results = capture_stderr { analyzer.run }
+        assert_equal [], results
+      end
+
+      def test_load_symbol_table_parses_successful_output
+        analyzer = build_analyzer
+        status = FakeStatus.new(true)
+        result = nil
+        Open3.stub(:capture3, ['{"name":{"kind":"CONSTANT","name":"<root>"},"kind":"CLASS_OR_MODULE"}', "", status]) do
+          result = analyzer.send(:load_symbol_table)
+        end
+        assert_equal "<root>", result.dig("name", "name")
+      end
+
+      def test_load_symbol_table_returns_nil_on_failure
+        analyzer = build_analyzer
+        status = FakeStatus.new(false)
+        result = nil
+        capture_stderr do
+          Open3.stub(:capture3, ["", "srb exploded", status]) do
+            result = analyzer.send(:load_symbol_table)
+          end
+        end
+        assert_nil result
+      end
+
+      def test_load_symbol_table_returns_nil_on_parse_error
+        analyzer = build_analyzer
+        status = FakeStatus.new(true)
+        result = nil
+        capture_stderr do
+          Open3.stub(:capture3, ["this is not json", "", status]) do
+            result = analyzer.send(:load_symbol_table)
+          end
+        end
+        assert_nil result
+      end
+
+      def test_extract_definitions_returns_empty_for_non_hash
+        analyzer = build_analyzer
+        assert_equal [], analyzer.send(:extract_definitions, nil)
+        assert_equal [], analyzer.send(:extract_definitions, "string")
+        assert_equal [], analyzer.send(:extract_definitions, 42)
+      end
+
+      def test_extract_definitions_skips_node_without_name_or_kind
+        analyzer = build_analyzer
+        # A node with neither name nor kind should not produce any definitions.
+        node = { "children" => [] }
+        assert_equal [], analyzer.send(:extract_definitions, node)
+      end
+
+      def test_extract_definitions_skips_class_with_non_constant_name_kind
+        analyzer = build_analyzer
+        node = {
+          "name" => { "kind" => "UTF8", "name" => "something" },
+          "kind" => "CLASS_OR_MODULE",
+          "children" => [],
+        }
+        # UTF8 kind on a CLASS_OR_MODULE is not extracted (we only want CONSTANT).
+        assert_equal [], analyzer.send(:extract_definitions, node)
+      end
+
+      def test_extract_definitions_skips_method_with_non_utf8_name_kind
+        analyzer = build_analyzer
+        node = {
+          "name" => { "kind" => "CONSTANT", "name" => "MyConst" },
+          "kind" => "METHOD",
+          "children" => [],
+        }
+        # CONSTANT kind on a METHOD is not extracted.
+        assert_equal [], analyzer.send(:extract_definitions, node)
+      end
+
+      def test_extract_definitions_skips_unknown_kind
+        analyzer = build_analyzer
+        node = {
+          "name" => { "kind" => "UTF8", "name" => "field_name" },
+          "kind" => "FIELD",
+          "children" => [],
+        }
+        assert_equal [], analyzer.send(:extract_definitions, node)
+      end
+
+      def test_extract_definitions_with_no_children_key
+        analyzer = build_analyzer
+        # A node with no "children" key is handled cleanly (not an Array).
+        node = {
+          "name" => { "kind" => "CONSTANT", "name" => "Leaf" },
+          "kind" => "CLASS_OR_MODULE",
+        }
+        defs = analyzer.send(:extract_definitions, node)
+        assert_equal ["Leaf"], defs.map(&:name)
+      end
+
+      def test_synthetic_name_returns_true_for_nil
+        analyzer = build_analyzer
+        assert analyzer.send(:synthetic_name?, nil)
+      end
+
+      def test_synthetic_name_returns_true_for_initialize
+        analyzer = build_analyzer
+        assert analyzer.send(:synthetic_name?, "initialize")
+      end
+
+      def test_synthetic_name_returns_true_for_angle_bracket
+        analyzer = build_analyzer
+        assert analyzer.send(:synthetic_name?, "<block>")
+      end
+
+      def test_synthetic_name_returns_false_for_normal_name
+        analyzer = build_analyzer
+        refute analyzer.send(:synthetic_name?, "perform")
+      end
+
+      def test_find_dead_keeps_unknown_kinds
+        analyzer = build_analyzer
+        # :attr_reader falls through to `else => true` in find_dead
+        defn = Definition.new(name: "name", full_name: "Foo#name", kind: :attr_reader, location: "t:1")
+        dead = analyzer.send(:find_dead, [defn], [])
+        assert_equal ["name"], dead.map(&:name)
+      end
+
+      def test_extract_definitions_top_level_method_has_no_owner
+        analyzer = build_analyzer
+        node = {
+          "name" => { "kind" => "UTF8", "name" => "top_level_method" },
+          "kind" => "METHOD",
+        }
+        defs = analyzer.send(:extract_definitions, node)
+        assert_equal 1, defs.size
+        assert_equal "top_level_method", defs.first.full_name
+        assert_nil defs.first.owner_name
+      end
+
+      def test_find_dead_handles_unknown_kind_via_else_branch
+        analyzer = build_analyzer
+        defn = Definition.new(name: "f", full_name: "A#f", kind: :attr_reader, location: "t:1")
+        dead = analyzer.send(:find_dead, [defn], [])
+        assert_includes dead.map(&:name), "f"
+      end
+
+      def test_find_dead_ignores_method_prefix_and_dynamic_namespace_references
+        analyzer = build_analyzer
+        defn = Definition.new(name: "used", full_name: "Foo#used", kind: :method, location: "t:1")
+        # References with kinds other than :method/:constant fall through the case :else.
+        prefix_ref = Reference.new(name: "dump_", location: "t:2", kind: :method_prefix)
+        ns_ref = Reference.new(name: "Foo", location: "t:3", kind: :dynamic_namespace)
+        dead = analyzer.send(:find_dead, [defn], [prefix_ref, ns_ref])
+        # "used" has no :method reference, so it's dead.
+        assert_includes dead.map(&:name), "used"
+      end
+
+      def test_extract_definitions_child_namespace_uses_parent_for_synthetic
+        analyzer = build_analyzer
+        # Parent has a synthetic name → child_ns stays as parent namespace.
+        node = {
+          "name" => { "kind" => "CONSTANT", "name" => "<describe>" },
+          "kind" => "CLASS_OR_MODULE",
+          "children" => [
+            {
+              "name" => { "kind" => "CONSTANT", "name" => "Real" },
+              "kind" => "CLASS_OR_MODULE",
+              "children" => [],
+            },
+          ],
+        }
+        defs = analyzer.send(:extract_definitions, node)
+        # Parent is synthetic → skipped; child is real but namespace stays []
+        assert_equal ["Real"], defs.map(&:name)
+      end
+
       def test_run_with_mocked_subprocess
         dir = Dir.mktmpdir
         File.write(File.join(dir, "app.rb"), <<~RUBY)
@@ -236,6 +424,16 @@ module SorbetDeadcode
       end
 
       private
+
+      FakeStatus = Struct.new(:ok) do
+        def success?
+          ok
+        end
+      end
+
+      def build_analyzer
+        FileTableAnalyzer.new(project_root: "/tmp", paths: ["/tmp"], exclude_paths: [])
+      end
 
       def capture_stderr
         original = $stderr

@@ -298,6 +298,134 @@ module SorbetDeadcode
         assert_includes dead_names, "DeadModule"
       end
 
+      def test_accepts_a_single_file_path
+        dir = Dir.mktmpdir
+        file = File.join(dir, "single.rb")
+        File.write(file, <<~RUBY)
+          class Single
+            def dead_one
+            end
+          end
+        RUBY
+
+        analyzer = DeadCodeAnalyzer.new(paths: file)
+        analyzer.run
+        assert_includes analyzer.dead_definitions.map(&:name), "dead_one"
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_alive_returns_false_for_unknown_kind
+        analyzer = DeadCodeAnalyzer.new(paths: [])
+        fake = Struct.new(:kind, :name, :full_name, :owner_name).new(:weird, "x", "x", nil)
+        index = analyzer.send(:build_reference_index)
+        refute analyzer.send(:alive?, fake, index)
+      end
+
+      def test_build_reference_index_ignores_unknown_reference_kind
+        analyzer = DeadCodeAnalyzer.new(paths: [])
+        fake_ref = Struct.new(:kind).new(:something_else)
+        analyzer.instance_variable_set(:@references, [fake_ref])
+        index = analyzer.send(:build_reference_index)
+        assert_empty index[:untyped_methods]
+        assert_empty index[:constants]
+      end
+
+      def test_skips_unparseable_files
+        dir = Dir.mktmpdir
+        File.write(File.join(dir, "broken.rb"), "class Broken\n  def oops(\nend")
+        File.write(File.join(dir, "ok.rb"), <<~RUBY)
+          class Ok
+            def dead_here
+            end
+          end
+        RUBY
+
+        analyzer = DeadCodeAnalyzer.new(paths: [dir])
+        analyzer.run
+        # Parsing the broken file is skipped without raising; the good file still works.
+        assert_includes analyzer.dead_definitions.map(&:name), "dead_here"
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_top_level_inline_constant_without_owner_stays_alive
+        analyzer = analyze_source(<<~RUBY)
+          PARENT = [CHILD = "x"].freeze
+          CHILD
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "PARENT"
+      end
+
+      def test_sig_extraction_covers_type_shapes
+        # Exercises every branch of SigExtractor's type/param extraction. We only
+        # assert the run completes and returns definitions; the point is coverage
+        # of the sig-parsing paths.
+        analyzer = analyze_source(<<~RUBY)
+          extend T::Sig
+
+          sig { returns(String) }
+          def top_level_method
+          end
+
+          class Wrapper
+            sig { returns(Outer::Inner) }
+            def const_path; end
+
+            sig { returns(T.nilable(String)) }
+            def t_with_arg; end
+
+            sig { returns(T.foo) }
+            def t_without_arg; end
+
+            sig { returns(Kernel.rand) }
+            def call_non_t; end
+
+            sig { returns(bare_helper) }
+            def call_no_receiver; end
+
+            sig { returns }
+            def returns_without_arg; end
+
+            sig { params.returns(String) }
+            def params_without_args; end
+
+            sig { returns(:weird) }
+            def symbol_type; end
+
+            sig { params(x: Integer, y: String).returns(String) }
+            def with_params(x, y); end
+
+            sig { params(Integer).returns(String) }
+            def positional_param; end
+
+            sig { params(**rest).returns(String) }
+            def splat_param; end
+
+            sig { void }
+            def void_method; end
+
+            sig { returns(String).checked(:never) }
+            def chained; end
+
+            sig {}
+            def empty_block; end
+
+            sig
+            def no_block; end
+
+            sig { Helper.configure }
+            def receiver_recursion; end
+          end
+        RUBY
+
+        assert_kind_of Array, analyzer.dead_definitions
+        # The signatures referencing Outer::Inner registered a return type for const_path.
+        assert analyzer.type_resolver.method_signatures.dig("Wrapper", "const_path")
+      end
+
       private
 
       def analyze_source(source)

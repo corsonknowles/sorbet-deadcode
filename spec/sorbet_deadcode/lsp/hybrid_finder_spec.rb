@@ -23,16 +23,9 @@ module SorbetDeadcode
           App.new.alive_method
         RUBY
 
-        finder = HybridFinder.new(
-          project_root: dir,
-          paths: [dir],
-          exclude_paths: [],
-        )
+        client = MockClient.new({ "truly_dead" => [] })
 
-        mock_client = MockLspClient.new({})
-        stub_finder_with_mock_client(finder, mock_client)
-
-        results = capture_stderr { finder.run }
+        results = run_finder(dir, client)
         dead_names = results.map(&:name)
 
         assert_includes dead_names, "truly_dead"
@@ -53,21 +46,12 @@ module SorbetDeadcode
           end
         RUBY
 
-        finder = HybridFinder.new(
-          project_root: dir,
-          paths: [dir],
-          exclude_paths: [],
-        )
-
-        mock_client = MockLspClient.new(
-          "looks_dead" => [
-            { "uri" => "file://#{dir}/other.rb", "range" => { "start" => { "line" => 10, "character" => 0 }, "end" => { "line" => 10, "character" => 10 } } },
-          ],
+        client = MockClient.new({
+          "looks_dead" => [ref("#{dir}/other.rb", 10)],
           "truly_dead" => [],
-        )
-        stub_finder_with_mock_client(finder, mock_client)
+        })
 
-        results = capture_stderr { finder.run }
+        results = run_finder(dir, client)
         dead_names = results.map(&:name)
 
         refute_includes dead_names, "looks_dead"
@@ -85,20 +69,10 @@ module SorbetDeadcode
           end
         RUBY
 
-        finder = HybridFinder.new(
-          project_root: dir,
-          paths: [dir],
-          exclude_paths: ["/spec/"],
-        )
+        client = MockClient.new({ "tested_only" => [ref("#{dir}/spec/model_spec.rb", 5)] })
 
-        spec_ref = { "uri" => "file://#{dir}/spec/model_spec.rb", "range" => { "start" => { "line" => 5, "character" => 0 }, "end" => { "line" => 5, "character" => 11 } } }
-        mock_client = MockLspClient.new("tested_only" => [spec_ref])
-        stub_finder_with_mock_client(finder, mock_client)
-
-        results = capture_stderr { finder.run }
-        dead_names = results.map(&:name)
-
-        assert_includes dead_names, "tested_only"
+        results = run_finder(dir, client, exclude_paths: ["/spec/"])
+        assert_includes results.map(&:name), "tested_only"
       ensure
         FileUtils.remove_entry(dir) if dir
       end
@@ -114,13 +88,9 @@ module SorbetDeadcode
           App.new.used
         RUBY
 
-        finder = HybridFinder.new(
-          project_root: dir,
-          paths: [dir],
-          exclude_paths: [],
-        )
-
-        results = capture_stderr { finder.run }
+        results = capture_stderr do
+          HybridFinder.new(project_root: dir, paths: [dir], exclude_paths: []).run
+        end
         assert_equal [], results
       ensure
         FileUtils.remove_entry(dir) if dir
@@ -141,23 +111,13 @@ module SorbetDeadcode
           end
         RUBY
 
-        finder = HybridFinder.new(
-          project_root: dir,
-          paths: [dir],
-          exclude_paths: [],
-          parallel: 3,
-        )
-
-        mock_client = MockAsyncLspClient.new(
-          "alive_via_lsp" => [
-            { "uri" => "file://#{dir}/caller.rb", "range" => { "start" => { "line" => 1, "character" => 0 }, "end" => { "line" => 1, "character" => 12 } } },
-          ],
+        client = MockClient.new({
           "dead_one" => [],
           "dead_two" => [],
-        )
-        stub_finder_with_async_mock_client(finder, mock_client)
+          "alive_via_lsp" => [ref("#{dir}/caller.rb", 1)],
+        })
 
-        results = capture_stderr { finder.run }
+        results = run_finder(dir, client, parallel: 3)
         dead_names = results.map(&:name)
 
         assert_includes dead_names, "dead_one"
@@ -167,101 +127,283 @@ module SorbetDeadcode
         FileUtils.remove_entry(dir) if dir
       end
 
-      private
-
-      def stub_finder_with_mock_client(finder, mock_client)
-        finder.define_singleton_method(:lsp_confirms_dead?) do |_client, defn|
-          name = defn.name
-          refs = mock_client.references_by_name(name)
-          live_refs = send(:filter_references, refs, defn)
-          live_refs.empty?
-        end
-
-        finder.define_singleton_method(:run) do
-          candidates = send(:prism_pass)
-          return [] if candidates.empty?
-
-          $stderr.puts "Prism pass found #{candidates.size} candidates. Validating with LSP..."
-
-          confirmed_dead = []
-          candidates.each_with_index do |defn, index|
-            $stderr.print "\rValidating candidates: #{index + 1}/#{candidates.size}"
-            if send(:lsp_confirms_dead?, mock_client, defn)
-              confirmed_dead << defn
+      def test_parallel_skips_candidate_with_unparseable_location
+        dir = Dir.mktmpdir
+        File.write(File.join(dir, "app.rb"), <<~RUBY)
+          class App
+            def dead_real
             end
           end
-          $stderr.puts
+        RUBY
 
-          @dead_definitions = confirmed_dead
-        end
+        client = MockClient.new({ "dead_real" => [] })
+        finder = HybridFinder.new(project_root: dir, paths: [dir], exclude_paths: [], parallel: 2)
+
+        bad = Definition.new(name: "ghost", full_name: "App#ghost", kind: :method, location: "nofile")
+        real_pass = finder.method(:prism_pass)
+        finder.define_singleton_method(:prism_pass) { real_pass.call + [bad] }
+
+        results = capture_stderr { Client.stub(:new, client) { finder.run } }
+        refute_includes results.map(&:name), "ghost"
+      ensure
+        FileUtils.remove_entry(dir) if dir
       end
 
-      def stub_finder_with_async_mock_client(finder, mock_client)
-        finder.define_singleton_method(:run) do
-          candidates = send(:prism_pass)
-          return [] if candidates.empty?
+      # detect_column tests — HybridFinder has its own copy of the method ------
 
-          $stderr.puts "Prism pass found #{candidates.size} candidates. Validating with LSP..."
+      def test_detect_column_method_match
+        dir = Dir.mktmpdir
+        file = write_file(dir, "app.rb", "  def my_method\n  end\n")
+        col = make_finder(dir).send(:detect_column, file, 0, make_defn("my_method", :method, "#{file}:1"))
+        assert_equal 6, col
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
 
-          confirmed_dead = send(:lsp_validate, mock_client, candidates)
-          @dead_definitions = confirmed_dead
+      def test_detect_column_method_self_dot
+        dir = Dir.mktmpdir
+        file = write_file(dir, "app.rb", "  def self.my_method\n  end\n")
+        col = make_finder(dir).send(:detect_column, file, 0, make_defn("my_method", :method, "#{file}:1"))
+        assert_equal 11, col
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_detect_column_class_match
+        dir = Dir.mktmpdir
+        file = write_file(dir, "c.rb", "class Foo\nend\n")
+        col = make_finder(dir).send(:detect_column, file, 0, make_defn("Foo", :class, "#{file}:1"))
+        assert_equal 6, col
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_detect_column_module_match
+        dir = Dir.mktmpdir
+        file = write_file(dir, "m.rb", "module Bar\nend\n")
+        col = make_finder(dir).send(:detect_column, file, 0, make_defn("Bar", :module, "#{file}:1"))
+        assert_equal 7, col
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_detect_column_constant_match
+        dir = Dir.mktmpdir
+        file = write_file(dir, "c.rb", "MAX = 42\n")
+        col = make_finder(dir).send(:detect_column, file, 0, make_defn("MAX", :constant, "#{file}:1"))
+        assert_equal 0, col
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_detect_column_attr_reader_match
+        dir = Dir.mktmpdir
+        file = write_file(dir, "c.rb", "  attr_reader :name\n")
+        col = make_finder(dir).send(:detect_column, file, 0, make_defn("name", :attr_reader, "#{file}:1"))
+        assert_equal 14, col
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_detect_column_attr_writer_match
+        dir = Dir.mktmpdir
+        file = write_file(dir, "c.rb", "  attr_writer :name\n")
+        col = make_finder(dir).send(:detect_column, file, 0, make_defn("name=", :attr_writer, "#{file}:1"))
+        assert_equal 14, col
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_detect_column_method_no_match_returns_zero
+        dir = Dir.mktmpdir
+        file = write_file(dir, "a.rb", "  define_method(:foo) {}\n")
+        col = make_finder(dir).send(:detect_column, file, 0, make_defn("foo", :method, "#{file}:1"))
+        assert_equal 0, col
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_detect_column_class_no_match_returns_zero
+        dir = Dir.mktmpdir
+        file = write_file(dir, "c.rb", "  # no class here\n")
+        col = make_finder(dir).send(:detect_column, file, 0, make_defn("Foo", :class, "#{file}:1"))
+        assert_equal 0, col
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_detect_column_module_no_match_returns_zero
+        dir = Dir.mktmpdir
+        file = write_file(dir, "m.rb", "  # no module here\n")
+        col = make_finder(dir).send(:detect_column, file, 0, make_defn("Foo", :module, "#{file}:1"))
+        assert_equal 0, col
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_detect_column_constant_no_match_returns_zero
+        dir = Dir.mktmpdir
+        file = write_file(dir, "c.rb", "  # no constant here\n")
+        col = make_finder(dir).send(:detect_column, file, 0, make_defn("MAX", :constant, "#{file}:1"))
+        assert_equal 0, col
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_detect_column_attr_no_match_returns_zero
+        dir = Dir.mktmpdir
+        file = write_file(dir, "c.rb", "  # no attr\n")
+        col = make_finder(dir).send(:detect_column, file, 0, make_defn("name", :attr_reader, "#{file}:1"))
+        assert_equal 0, col
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_detect_column_out_of_bounds_returns_zero
+        dir = Dir.mktmpdir
+        file = write_file(dir, "c.rb", "one\n")
+        col = make_finder(dir).send(:detect_column, file, 998, make_defn("foo", :method, "#{file}:999"))
+        assert_equal 0, col
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_detect_column_falls_through_for_unrecognised_kind
+        dir = Dir.mktmpdir
+        file = write_file(dir, "c.rb", "anything\n")
+        defn = Definition.allocate
+        defn.instance_variable_set(:@name, "anything")
+        defn.instance_variable_set(:@full_name, "anything")
+        defn.instance_variable_set(:@kind, :unknown_kind_for_test)
+        defn.instance_variable_set(:@location, "#{file}:1")
+        col = make_finder(dir).send(:detect_column, file, 0, defn)
+        assert_equal 0, col
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      # filter_references -------------------------------------------------------
+
+      def test_filter_references_returns_empty_for_non_array
+        finder = make_finder("/tmp")
+        assert_equal [], finder.send(:filter_references, nil, make_defn("x", :method, "/tmp/f.rb:1"))
+        assert_equal [], finder.send(:filter_references, "bad", make_defn("x", :method, "/tmp/f.rb:1"))
+      end
+
+      def test_filter_references_excludes_nil_ref_uri
+        finder = make_finder("/tmp")
+        ref_nil_uri = { "uri" => nil, "range" => { "start" => { "line" => 3, "character" => 0 } } }
+        defn = make_defn("x", :method, "/tmp/f.rb:4")
+        result = finder.send(:filter_references, [ref_nil_uri], defn)
+        # nil uri is not a self-ref; &.include?(ep) is nil (falsy) → not excluded → kept
+        assert_equal [ref_nil_uri], result
+      end
+
+      def test_filter_references_with_exclude_paths_and_nil_uri
+        finder = HybridFinder.new(project_root: "/tmp", paths: ["/tmp"], exclude_paths: ["/spec/"])
+        ref_nil_uri = { "uri" => nil, "range" => { "start" => { "line" => 3, "character" => 0 } } }
+        defn = make_defn("x", :method, "/tmp/f.rb:4")
+        result = finder.send(:filter_references, [ref_nil_uri], defn)
+        # nil uri → ref_path nil → &.include? nil (falsy) → not excluded → kept
+        assert_equal [ref_nil_uri], result
+      end
+
+      # send_reference_request with unparseable location -----------------------
+
+      def test_send_reference_request_returns_nil_for_bad_location
+        dir = Dir.mktmpdir
+        File.write(File.join(dir, "x.rb"), "class X; end\n")
+        bad_defn = make_defn("x", :method, "no_colon_here")
+        result = make_finder(dir).send(:send_reference_request, Object.new, bad_defn)
+        assert_nil result
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      # lsp_confirms_dead? with unparseable location ---------------------------
+
+      def test_lsp_confirms_dead_returns_true_for_bad_location
+        dir = Dir.mktmpdir
+        File.write(File.join(dir, "x.rb"), "class X; end\n")
+        bad_defn = make_defn("x", :method, "no_colon_here")
+        result = make_finder(dir).send(:lsp_confirms_dead?, Object.new, bad_defn)
+        assert result
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      private
+
+      def ref(path, line)
+        {
+          "uri" => "file://#{File.expand_path(path)}",
+          "range" => { "start" => { "line" => line, "character" => 0 }, "end" => { "line" => line, "character" => 5 } },
+        }
+      end
+
+      def run_finder(dir, client, exclude_paths: [], parallel: 1)
+        finder = HybridFinder.new(
+          project_root: dir,
+          paths: [dir],
+          exclude_paths: exclude_paths,
+          parallel: parallel,
+        )
+        capture_stderr do
+          Client.stub(:new, client) { finder.run }
         end
       end
 
       def capture_stderr
         original = $stderr
         $stderr = StringIO.new
-        result = yield
-        result
+        yield
       ensure
         $stderr = original
       end
 
-      class MockLspClient
-        def initialize(name_to_refs)
-          @name_to_refs = name_to_refs
-        end
-
-        def references(_file_path, _line, _column)
-          []
-        end
-
-        def references_by_name(name)
-          @name_to_refs.fetch(name, [])
-        end
-
-        def shutdown; end
+      def make_finder(dir)
+        HybridFinder.new(project_root: dir, paths: [dir])
       end
 
-      class MockAsyncLspClient
-        def initialize(name_to_refs)
-          @name_to_refs = name_to_refs
+      def make_defn(name, kind, location)
+        Definition.new(name: name, full_name: name, kind: kind, location: location)
+      end
+
+      def write_file(dir, name, content)
+        path = File.join(dir, name)
+        File.write(path, content)
+        path
+      end
+
+      class MockClient
+        def initialize(refs_by_name)
+          @refs_by_name = refs_by_name
           @pending = {}
           @next_id = 0
         end
 
-        def async_references(file_path, line, column)
+        def references(file_path, line, _column)
+          @refs_by_name.fetch(name_at(file_path, line), [])
+        end
+
+        def async_references(file_path, line, _column)
           @next_id += 1
-          id = @next_id
-          lines = File.readlines(file_path)
-          source_line = lines[line]
-          name = detect_name_at(source_line)
-          @pending[id] = @name_to_refs.fetch(name, [])
-          id
+          @pending[@next_id] = name_at(file_path, line)
+          @next_id
         end
 
         def collect_response(id)
-          @pending.delete(id) || []
+          @refs_by_name.fetch(@pending.delete(id), [])
         end
 
         def shutdown; end
 
         private
 
-        def detect_name_at(source_line)
-          return "" unless source_line
-          match = source_line&.match(/\bdef\s+(self\.)?(\w+)/)
-          match ? match[2] : ""
+        def name_at(file_path, zero_line)
+          source_line = File.readlines(file_path)[zero_line].to_s
+          m = source_line.match(/\bdef\s+(self\.)?(\w+)/)
+          m ? m[2] : ""
         end
       end
     end

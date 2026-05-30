@@ -39,23 +39,20 @@ module SorbetDeadcode
         old_method = @current_method_name
         @current_method_name = node.name.to_s
 
+        added_params = []
         if @type_resolver && current_namespace
           sig = @type_resolver.method_signatures.dig(current_namespace, @current_method_name)
-          if sig
-            sig[:params].each do |param_name, param_type|
-              @local_types[param_name] = param_type
-            end
+          sig&.dig(:params)&.each do |param_name, param_type|
+            @local_types[param_name] = param_type
+            added_params << param_name
           end
         end
 
         super
 
+        # Clear only the param types we added for this method.
+        added_params.each { |k| @local_types.delete(k) }
         @current_method_name = old_method
-        # Clear param types after leaving the method
-        if @type_resolver && current_namespace
-          sig = @type_resolver.method_signatures.dig(current_namespace, @current_method_name.to_s)
-          sig&.dig(:params)&.each_key { |k| @local_types.delete(k) }
-        end
       end
 
       def visit_call_node(node)

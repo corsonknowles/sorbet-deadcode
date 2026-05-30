@@ -7,5 +7,6 @@ gemspec
 group :development, :test do
   gem "minitest", "~> 5.0"
   gem "rake", "~> 13.0"
+  gem "simplecov", "~> 0.22", require: false
   gem "sorbet-static-and-runtime"
 end
