@@ -4,7 +4,7 @@
 require "sorbet_deadcode"
 require "optparse"
 
-options = { paths: [], exclude_paths: [] }
+options = { paths: [], exclude_paths: ["/spec/", "/test/"], include_specs: false }
 
 OptionParser.new do |opts|
   opts.banner = "Usage: sorbet-deadcode [options] PATH..."
@@ -13,8 +13,8 @@ OptionParser.new do |opts|
     options[:exclude_paths] << pattern
   end
 
-  opts.on("--no-specs", "Exclude spec/ and test/ directories") do
-    options[:exclude_paths].push("/spec/", "/test/")
+  opts.on("--include-specs", "Include spec/ and test/ directories in analysis") do
+    options[:include_specs] = true
   end
 
   opts.on("-h", "--help", "Show this help") do
@@ -29,6 +29,7 @@ OptionParser.new do |opts|
 end.parse!
 
 options[:paths] = ARGV.empty? ? ["."] : ARGV
+options[:exclude_paths] = [] if options[:include_specs]
 
 results = SorbetDeadcode.analyze(
   options[:paths],
