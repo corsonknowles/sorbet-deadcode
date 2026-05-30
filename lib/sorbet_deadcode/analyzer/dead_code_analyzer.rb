@@ -5,17 +5,33 @@ module SorbetDeadcode
     class DeadCodeAnalyzer
       attr_reader :definitions, :references, :type_resolver
 
-      def initialize(paths:, exclude_paths: [])
+      # reference_paths: additional paths to scan for *references only* (no definitions
+      # are collected from them). Use this to include exe/, spec/, or any other directory
+      # that calls into the definitions under @paths — so public API methods are not
+      # falsely reported as dead just because callers live outside the definition scope.
+      def initialize(paths:, exclude_paths: [], reference_paths: nil)
         @paths = Array(paths)
         @exclude_paths = Array(exclude_paths)
+        @reference_paths = reference_paths ? Array(reference_paths) : []
         @definitions = []
         @references = []
         @type_resolver = Resolver::TypeResolver.new
       end
 
       def run
-        files = collect_files
-        index_files(files)
+        def_files = collect_files
+        index_files(def_files)
+
+        # Collect references (but not definitions) from the extra reference paths.
+        unless @reference_paths.empty?
+          ref_only_files = collect_reference_only_files(def_files)
+          ref_only_files.each { |file| index_file_references_only(file) }
+        end
+
+        # Pre-compute which class/module full_names appear in multiple files.
+        # A module reopened in 2+ files is a shared namespace — always alive.
+        @multi_file_namespaces = compute_multi_file_namespaces
+
         dead_definitions
       end
 
@@ -36,6 +52,35 @@ module SorbetDeadcode
         }.reject { |f|
           @exclude_paths.any? { |ep| f.include?(ep) }
         }.sort
+      end
+
+      # Files in @reference_paths that aren't already in the definition set.
+      # Note: exclude_paths is NOT applied here — the whole purpose of reference_paths
+      # is to find callers in directories (e.g. spec/, exe/) that are intentionally
+      # excluded from definition scanning. We only skip files already analysed above.
+      def collect_reference_only_files(def_files)
+        def_set = Set.new(def_files.map { |f| File.expand_path(f) })
+        @reference_paths.flat_map { |path|
+          if File.file?(path)
+            [path]
+          else
+            Dir.glob(File.join(path, "**", "*.rb"))
+          end
+        }.reject { |f|
+          def_set.include?(File.expand_path(f))
+        }.sort
+      end
+
+      def index_file_references_only(file)
+        source = File.read(file)
+        result = Prism.parse(source)
+        return unless result.success?
+
+        node = result.value
+        extract_type_info(node, file)
+        ref_collector = Collector::ReferenceCollector.new(file, type_resolver: @type_resolver)
+        ref_collector.visit(node)
+        @references.concat(ref_collector.references)
       end
 
       def index_files(files)
@@ -64,18 +109,35 @@ module SorbetDeadcode
         SigExtractor.new(file, @type_resolver).visit(node)
       end
 
+      def compute_multi_file_namespaces
+        # Count how many distinct source files each class/module full_name appears in.
+        file_counts = Hash.new { |h, k| h[k] = Set.new }
+        @definitions.each do |d|
+          next unless d.kind == :class || d.kind == :module
+
+          file = d.location.split(":").first
+          file_counts[d.full_name] << file
+        end
+        Set.new(file_counts.select { |_, files| files.size > 1 }.keys)
+      end
+
       # Determine if a definition is alive based on references
       def alive?(definition, ref_index)
         case definition.kind
         when :class, :module
-          ref_index[:constants].include?(definition.name) ||
+          # A module/class opened in multiple files is a shared namespace; always live.
+          (@multi_file_namespaces || Set.new).include?(definition.full_name) ||
+            ref_index[:constants].include?(definition.name) ||
             ref_index[:constants].include?(definition.full_name)
         when :constant
           ref_index[:constants].include?(definition.name) ||
             ref_index[:constants].include?(definition.full_name) ||
             co_located_alive?(definition, ref_index)
         when :method, :attr_reader, :attr_writer
-          dynamically_dispatched?(definition, ref_index) ||
+          # initialize is always alive: `Foo.new` references the constant `Foo`,
+          # not the method name, so no explicit call-site reference ever appears.
+          definition.name == "initialize" ||
+            dynamically_dispatched?(definition, ref_index) ||
             typed_alive?(definition, ref_index) ||
             name_alive?(definition, ref_index)
         else
@@ -113,14 +175,20 @@ module SorbetDeadcode
         typed_refs.any? { |receiver_type| receiver_type == definition.owner_name }
       end
 
-      # Name-based liveness: fallback when no typed references exist for this name.
+      # Name-based liveness: fallback when typed evidence is inconclusive.
+      # - If ONLY typed references exist for this name (no untyped call-sites),
+      #   and none matched our owner, the definition is dead.
+      # - If any untyped call-site exists alongside typed ones, we can't safely
+      #   conclude which owner it targets, so we keep the definition alive.
       def name_alive?(definition, ref_index)
-        if ref_index[:typed_by_name].key?(definition.name)
-          # Typed references exist for this name but none matched our owner
-          # in typed_alive?, so this definition is dead.
+        has_typed = ref_index[:typed_by_name].key?(definition.name)
+        has_untyped = ref_index[:untyped_methods].include?(definition.name)
+
+        if has_typed && !has_untyped
+          # All call-sites are typed and none matched this owner → dead.
           false
         else
-          ref_index[:untyped_methods].include?(definition.name)
+          has_untyped
         end
       end
 

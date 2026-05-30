@@ -101,6 +101,48 @@ module SorbetDeadcode
         assert_includes refs.map(&:name), "display_name"
       end
 
+      def test_constant_path_emits_prefix_components
+        refs = collect(<<~RUBY)
+          Outer::Middle::Inner.new
+        RUBY
+
+        constant_names = refs.select { |r| r.kind == :constant }.map(&:name)
+        assert_includes constant_names, "Outer"
+        assert_includes constant_names, "Outer::Middle"
+        assert_includes constant_names, "Outer::Middle::Inner"
+      end
+
+      def test_visitor_subclass_emits_visit_prefix_reference
+        refs = collect(<<~RUBY)
+          class MyVisitor < Prism::Visitor
+            def visit_call_node(node); end
+          end
+        RUBY
+
+        prefix = refs.find { |r| r.kind == :method_prefix && r.name == "visit_" }
+        assert prefix, "expected a method_prefix reference for 'visit_'"
+      end
+
+      def test_non_visitor_subclass_does_not_emit_visit_prefix
+        refs = collect(<<~RUBY)
+          class Transformer < Prism::Mutation
+            def transform_call_node(node); end
+          end
+        RUBY
+
+        refute refs.any? { |r| r.kind == :method_prefix && r.name == "visit_" }
+      end
+
+      def test_class_with_no_superclass_does_not_emit_visit_prefix
+        refs = collect(<<~RUBY)
+          class Plain
+            def visit_something; end
+          end
+        RUBY
+
+        refute refs.any? { |r| r.kind == :method_prefix && r.name == "visit_" }
+      end
+
       def test_self_receiver_resolves_to_namespace_with_resolver
         resolver = Resolver::TypeResolver.new
         refs = collect(<<~RUBY, type_resolver: resolver)

@@ -24,6 +24,19 @@ module SorbetDeadcode
       def visit_class_node(node)
         @definition_locations << node.constant_path.location.start_line
         @namespace_stack.push(node.constant_path.slice)
+
+        # If this class inherits from a Visitor-protocol base (e.g. Prism::Visitor,
+        # Prism::BasicVisitor), its visit_* methods are dispatched dynamically by
+        # the framework via public_send("visit_#{type}", node). Emit a method_prefix
+        # reference so the existing dynamically_dispatched? guard keeps them alive.
+        if visitor_subclass?(node)
+          @references << Reference.new(
+            name: "visit_",
+            location: format_location(node.location),
+            kind: :method_prefix,
+          )
+        end
+
         super
         @namespace_stack.pop
       end
@@ -94,11 +107,20 @@ module SorbetDeadcode
       def visit_constant_path_node(node)
         return super if @definition_locations.include?(node.location.start_line)
 
-        @references << Reference.new(
-          name: node.slice,
-          location: format_location(node.location),
-          kind: :constant,
-        )
+        location = format_location(node.location)
+        full_name = node.slice
+
+        # Emit a reference for each prefix component so that e.g.
+        # `SorbetDeadcode::Lsp::Client` also keeps `module SorbetDeadcode` and
+        # `module SorbetDeadcode::Lsp` alive.
+        parts = full_name.split("::")
+        parts.each_with_index do |_part, i|
+          @references << Reference.new(
+            name: parts[0..i].join("::"),
+            location: location,
+            kind: :constant,
+          )
+        end
         super
       end
 
@@ -173,6 +195,16 @@ module SorbetDeadcode
           recv_type = resolve_receiver_type(receiver_node.receiver)
           @type_resolver.return_type_of(recv_type, receiver_node.name.to_s)
         end
+      end
+
+      # Returns true when the class inherits from any class whose name contains
+      # "Visitor" — covers Prism::Visitor, Prism::BasicVisitor, and custom visitor
+      # base classes following the same naming convention.
+      def visitor_subclass?(class_node)
+        superclass = class_node.superclass
+        return false unless superclass
+
+        superclass.slice.include?("Visitor")
       end
 
       def current_namespace

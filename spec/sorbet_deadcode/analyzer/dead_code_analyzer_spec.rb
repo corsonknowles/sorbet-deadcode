@@ -298,6 +298,120 @@ module SorbetDeadcode
         assert_includes dead_names, "DeadModule"
       end
 
+      def test_initialize_is_never_dead
+        analyzer = analyze_source(<<~RUBY)
+          class Service
+            def initialize(name)
+              @name = name
+            end
+          end
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "initialize"
+      end
+
+      def test_module_alive_via_qualified_constant_path
+        analyzer = analyze_source(<<~RUBY)
+          module Outer
+            module Inner
+            end
+          end
+
+          Outer::Inner.new
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "Outer"
+        refute_includes dead_names, "Inner"
+      end
+
+      def test_reference_paths_keeps_public_api_alive
+        dir = Dir.mktmpdir
+        lib_dir = File.join(dir, "lib")
+        exe_dir = File.join(dir, "exe")
+        FileUtils.mkdir_p(lib_dir)
+        FileUtils.mkdir_p(exe_dir)
+
+        File.write(File.join(lib_dir, "service.rb"), <<~RUBY)
+          class Service
+            def public_method
+            end
+
+            def truly_dead
+            end
+          end
+        RUBY
+
+        File.write(File.join(exe_dir, "runner.rb"), <<~RUBY)
+          Service.new.public_method
+        RUBY
+
+        # Without reference_paths: public_method looks dead (caller in exe/ not scanned)
+        analyzer_narrow = DeadCodeAnalyzer.new(paths: [lib_dir])
+        analyzer_narrow.run
+        assert_includes analyzer_narrow.dead_definitions.map(&:name), "public_method"
+
+        # With reference_paths pointing at exe/: public_method is alive
+        analyzer_wide = DeadCodeAnalyzer.new(paths: [lib_dir], reference_paths: [exe_dir])
+        analyzer_wide.run
+        refute_includes analyzer_wide.dead_definitions.map(&:name), "public_method"
+        assert_includes analyzer_wide.dead_definitions.map(&:name), "truly_dead"
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_reference_paths_accepts_single_file
+        dir = Dir.mktmpdir
+        lib_dir = File.join(dir, "lib")
+        FileUtils.mkdir_p(lib_dir)
+        File.write(File.join(lib_dir, "service.rb"), "class S\n  def api; end\nend\n")
+        caller_file = File.join(dir, "caller.rb")
+        File.write(caller_file, "S.new.api\n")
+
+        analyzer = DeadCodeAnalyzer.new(paths: [lib_dir], reference_paths: [caller_file])
+        analyzer.run
+        refute_includes analyzer.dead_definitions.map(&:name), "api"
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_reference_paths_skips_unparseable_files
+        dir = Dir.mktmpdir
+        lib_dir = File.join(dir, "lib")
+        ref_dir = File.join(dir, "ref")
+        FileUtils.mkdir_p([lib_dir, ref_dir])
+        File.write(File.join(lib_dir, "service.rb"), "class S\n  def dead; end\nend\n")
+        File.write(File.join(ref_dir, "broken.rb"), "class Broken\n  def oops(\nend")
+
+        analyzer = DeadCodeAnalyzer.new(paths: [lib_dir], reference_paths: [ref_dir])
+        analyzer.run
+        # The broken ref file is skipped; `dead` remains dead.
+        assert_includes analyzer.dead_definitions.map(&:name), "dead"
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_reference_paths_skips_files_already_in_definition_set
+        dir = Dir.mktmpdir
+        File.write(File.join(dir, "app.rb"), <<~RUBY)
+          class App
+            def self_caller
+              self_caller
+            end
+          end
+        RUBY
+
+        # Passing the same dir as both paths and reference_paths should not
+        # double-count files. self_caller calls itself but is otherwise dead.
+        analyzer = DeadCodeAnalyzer.new(paths: [dir], reference_paths: [dir])
+        analyzer.run
+        # self_caller is an untyped self-call; alive because name is referenced.
+        refute_includes analyzer.dead_definitions.map(&:name), "self_caller"
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
       def test_accepts_a_single_file_path
         dir = Dir.mktmpdir
         file = File.join(dir, "single.rb")
