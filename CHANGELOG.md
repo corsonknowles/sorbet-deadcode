@@ -3,6 +3,15 @@
 ## Unreleased
 
 ### Added
+- **RABL template reference scanner** (#26, part of #4) — a second-pass refiner for `.rabl`
+  view templates. Each `.rabl` is Ruby, so it is parsed once and walked twice: the existing
+  Prism `ReferenceCollector` captures real method calls/constants (e.g. inside `node`/`child`
+  blocks), and a small DSL visitor harvests the symbol arguments of `attributes`/`attribute`
+  (model attributes) and `child`/`glue` (association sources) that aren't expressed as calls.
+  `node(:key)` output keys and `object`/`collection` ivars are not treated as methods. Method
+  matching is name-only (serialized receivers are untyped). Uses the shared `git ls-files`
+  finder (sub-second across hundreds of templates). CLI applies it by default (opt out with
+  `--no-rabl`).
 - **YAML reference scanner** (#24, part of #4) — a second-pass refiner that scans framework
   YAML configs for keys whose value is a qualified `Module::Class.method_name` reference
   (default key: `method`) and keeps both the method and its owning constant alive. Matching is
