@@ -322,36 +322,6 @@ module SorbetDeadcode
         assert_nil collector.send(:symbol_or_string, int_node)
       end
 
-      # ---- integration with DeadCodeAnalyzer ------------------------------
-
-      def test_analyzer_keeps_controller_action_alive_via_routes
-        app_dir = Dir.mktmpdir
-        FileUtils.mkdir_p(File.join(app_dir, "config"))
-        FileUtils.mkdir_p(File.join(app_dir, "app", "controllers"))
-
-        File.write(File.join(app_dir, "config", "routes.rb"), <<~RUBY)
-          get '/widgets', to: 'widgets#index'
-        RUBY
-
-        File.write(File.join(app_dir, "app", "controllers", "widgets_controller.rb"), <<~RUBY)
-          class WidgetsController
-            def index; end
-            def dead_action; end
-          end
-        RUBY
-
-        analyzer = Analyzer::DeadCodeAnalyzer.new(
-          paths: [File.join(app_dir, "app")],
-          route_root: app_dir,
-        )
-        analyzer.run
-
-        dead_names = analyzer.dead_definitions.map(&:name)
-        refute_includes dead_names, "index"
-        assert_includes dead_names, "dead_action"
-      ensure
-        FileUtils.remove_entry(app_dir) if app_dir
-      end
     end
   end
 end

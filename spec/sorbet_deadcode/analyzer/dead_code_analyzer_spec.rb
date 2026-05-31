@@ -462,15 +462,6 @@ module SorbetDeadcode
         FileUtils.remove_entry(dir) if dir
       end
 
-      def test_infer_route_root_returns_nil_when_no_routes_in_hierarchy
-        dir = Dir.mktmpdir
-        analyzer = DeadCodeAnalyzer.new(paths: [dir])
-        # Walking up from a tmpdir should hit the filesystem root and return nil.
-        assert_nil analyzer.send(:infer_route_root)
-      ensure
-        FileUtils.remove_entry(dir) if dir
-      end
-
       def test_reference_paths_skips_files_already_in_definition_set
         dir = Dir.mktmpdir
         File.write(File.join(dir, "app.rb"), <<~RUBY)

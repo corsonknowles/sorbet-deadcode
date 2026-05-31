@@ -153,12 +153,17 @@ elsif options[:lsp]
     parallel: options[:parallel],
   )
 else
-  SorbetDeadcode.analyze(
+  candidates = SorbetDeadcode.analyze(
     options[:paths],
     exclude_paths: options[:exclude_paths],
     reference_paths: options[:reference_root],
-    route_root: options[:no_routes] ? nil : options[:project_root],
   )
+
+  unless options[:no_routes]
+    candidates = SorbetDeadcode::Refiners::RouteRefiner.new(options[:project_root]).refine(candidates)
+  end
+
+  candidates
 end
 
 if options[:verify] && !results.empty?
