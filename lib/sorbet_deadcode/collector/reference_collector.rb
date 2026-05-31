@@ -94,9 +94,16 @@ module SorbetDeadcode
           # ActionMailer::Preview subclasses: preview methods are invoked by the
           # Rails mail preview UI via routing, not by explicit Ruby calls.
           # Mark the whole namespace as dynamically dispatched so all its methods
-          # (the preview actions) are kept alive.
-          ns = node.constant_path.slice
-          @references << Reference.new(name: ns, location: location, kind: :dynamic_namespace)
+          # (the preview actions) are kept alive. Use the fully-qualified namespace so
+          # it matches the owner_name recorded for nested definitions.
+          @references << Reference.new(name: current_namespace, location: location, kind: :dynamic_namespace)
+        end
+
+        if generator_subclass?(node)
+          # Rails generators (Rails::Generators::Base / NamedBase) and Thor command
+          # classes invoke every public instance method as an ordered step/command via
+          # reflection, not by explicit Ruby calls. Keep the whole namespace alive.
+          @references << Reference.new(name: current_namespace, location: location, kind: :dynamic_namespace)
         end
 
         super
@@ -619,6 +626,18 @@ module SorbetDeadcode
         return false unless superclass
 
         superclass.slice.include?("Visitor")
+      end
+
+      # Rails generators (`< Rails::Generators::Base` / `NamedBase`) and Thor command
+      # classes (`< Thor` / `< Thor::Group`) run every public instance method as an
+      # ordered step/command via reflection, so those methods have no explicit Ruby
+      # call site even though the framework invokes them.
+      def generator_subclass?(class_node)
+        superclass = class_node.superclass
+        return false unless superclass
+
+        slice = superclass.slice
+        slice.match?(/Generators::(Named)?Base\z/) || slice == "Thor" || slice == "Thor::Group"
       end
 
       # ActionMailer::Preview subclasses are invoked by the Rails preview UI via

@@ -3,6 +3,20 @@
 ## Unreleased
 
 ### Fixed
+- **Dynamic-namespace refs now use the fully-qualified name** — `mailer_preview` (and the new
+  generator) detection emitted the dynamic-namespace reference using the class's *short* name
+  (`node.constant_path.slice`), which never matched the fully-qualified `owner_name` recorded
+  for nested method definitions. As a result, preview/generator methods inside a `module`
+  were still reported dead. The reference now uses `current_namespace`, fixing mailer-preview
+  false positives for nested classes.
+
+### Added
+- **Rails generator / Thor command detection** — classes inheriting from `Rails::Generators::Base`
+  or `Rails::Generators::NamedBase` (and `Thor` / `Thor::Group`) invoke every public instance
+  method as an ordered step/command via reflection. Their methods are now kept alive (the whole
+  namespace is marked dynamically dispatched), matching the existing mailer-preview/visitor handling.
+
+### Fixed
 - **Setter false positives from non-`foo=` assignment forms** (#48) — a writer (`attr_writer`,
   the writer half of `attr_accessor`, or any `def foo=`) was reported dead when it was only
   ever invoked through a form whose source text doesn't contain the literal `foo=`:
