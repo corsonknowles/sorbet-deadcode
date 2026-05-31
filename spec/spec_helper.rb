@@ -16,6 +16,7 @@ SimpleCov.start do
   minimum_coverage line: 100, branch: 100
 end
 
+require "benchmark"
 require "minitest/autorun"
 require "minitest/mock"
 require "sorbet_deadcode"
