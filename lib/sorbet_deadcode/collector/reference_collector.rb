@@ -54,11 +54,11 @@ module SorbetDeadcode
         @local_types = {}
         @definition_locations = Set.new
         @current_method_name = nil
-        # Issue #10 fix 1: local var name => interpolation prefix (e.g. m = "dump_#{x}")
+        # Local var name => interpolation prefix, e.g. `m = "dump_#{x}"` records "dump_".
         @local_prefixes = {}
-        # Issue #10 fix 2: constant name => [symbol names] for literal symbol arrays
+        # Constant name => [symbol names] for literal symbol arrays, e.g. METHODS = %i[a b].
         @symbol_array_constants = {}
-        # Issue #10 fix 2: block-param name => [symbol names] currently in scope
+        # Block-param name => [symbol names] in scope while visiting an iteration block.
         @iterated_symbols = {}
       end
 
@@ -123,8 +123,9 @@ module SorbetDeadcode
         name = node.name.to_s
         location = format_location(node.location)
 
-        # Issue #10 fix 2: `[:a, :b].each { |m| send(m) }` or `METHODS.each { |m| ... }`.
-        # Bind the block param to the resolved symbol list while visiting the block.
+        # Resolve dispatch over a finite symbol list, e.g. `[:a, :b].each { |m| send(m) }`
+        # or `METHODS.each { |m| send(m) }`. Bind the block param to the resolved symbol
+        # list while visiting the block so the send(m) inside emits concrete references.
         if ITERATION_METHODS.include?(name) && (param = iteration_block_param(node)) && (syms = resolve_symbol_array(node.receiver))
           @iterated_symbols[param] = syms
           super
@@ -217,8 +218,8 @@ module SorbetDeadcode
           @local_types[node.name.to_s] = type if type
         end
 
-        # Issue #10 fix 1: track `m = "dump_#{x}"` so a later send(m) can emit a
-        # precise method_prefix reference instead of excluding the whole namespace.
+        # Track `m = "dump_#{x}"` so a later send(m) can emit a precise method_prefix
+        # reference (keeping `dump_*` methods alive) instead of excluding the whole namespace.
         prefix = literal_prefix(node.value)
         if prefix && !prefix.empty?
           @local_prefixes[node.name.to_s] = prefix
@@ -227,8 +228,8 @@ module SorbetDeadcode
         super
       end
 
-      # Issue #10 fix 2: track `METHODS = [:a, :b]` so iteration over the constant
-      # can resolve the dispatched method names.
+      # Track `METHODS = [:a, :b]` so iteration over the constant can resolve the
+      # dispatched method names to concrete references.
       def visit_constant_write_node(node)
         syms = symbol_array_values(node.value)
         @symbol_array_constants[node.name.to_s] = syms if syms
@@ -252,7 +253,7 @@ module SorbetDeadcode
           return
         end
 
-        # Issue #10 fix 2: variable bound to a finite symbol list via iteration,
+        # Variable bound to a finite symbol list via iteration,
         # e.g. `[:a, :b].each { |m| send(m) }` => emit each concrete method name.
         if first_arg.is_a?(Prism::LocalVariableReadNode) && @iterated_symbols.key?(first_arg.name.to_s)
           receiver_type = node.receiver ? resolve_receiver_type(node.receiver) : nil
@@ -262,8 +263,8 @@ module SorbetDeadcode
           return
         end
 
-        # Issue #10 fix 1: variable assigned an interpolated string with a literal
-        # prefix, e.g. `m = "dump_#{x}"; send(m)` => emit the `dump_` prefix.
+        # Variable assigned an interpolated string with a literal prefix,
+        # e.g. `m = "dump_#{x}"; send(m)` => emit the `dump_` prefix.
         if first_arg.is_a?(Prism::LocalVariableReadNode) && @local_prefixes.key?(first_arg.name.to_s)
           @references << Reference.new(name: @local_prefixes[first_arg.name.to_s], location: location, kind: :method_prefix)
           return
@@ -275,9 +276,10 @@ module SorbetDeadcode
           # e.g. public_send("dump_#{type}") => any `dump_*` method may be reached.
           @references << Reference.new(name: prefix, location: location, kind: :method_prefix)
         elsif current_namespace
-          # e.g. __send__(method_name) inside a class => any method in this
-          # namespace may be reached; exclude them from dead results (conservative
-          # fallback — see issue #10).
+          # e.g. __send__(method_name) inside a class => the runtime target is
+          # unknowable, so any method in this namespace may be reached. Conservatively
+          # exclude them all from dead results (the precise cases above are handled
+          # before reaching this fallback).
           @references << Reference.new(name: current_namespace, location: location, kind: :dynamic_namespace)
         end
       end

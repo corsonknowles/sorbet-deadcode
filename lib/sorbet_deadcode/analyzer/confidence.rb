@@ -32,7 +32,7 @@ module SorbetDeadcode
       def self.method_confidence(definition, ref_index)
         return LOW unless definition.owner_name
 
-        # Issue #10 fix 3: a method whose owning namespace contains an unresolvable
+        # A method whose owning namespace contains an unresolvable
         # variable-target dynamic dispatch could be reached at runtime. When such a
         # method is reported (`dynamic_dispatch: :report` mode), downgrade to :low.
         dynamic_ns = ref_index[:dynamic_namespaces]

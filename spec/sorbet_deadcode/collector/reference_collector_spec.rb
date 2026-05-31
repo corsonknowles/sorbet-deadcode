@@ -535,7 +535,7 @@ module SorbetDeadcode
         assert_equal "build_", prefix.name
       end
 
-      # Issue #10 fix 1: local var assigned an interpolated string with a prefix
+      # Local var assigned an interpolated string with a prefix
       def test_local_var_interpolation_prefix_emits_method_prefix
         refs = collect(<<~'RUBY')
           class Serializer
@@ -551,7 +551,7 @@ module SorbetDeadcode
         refute refs.any? { |r| r.kind == :dynamic_namespace }
       end
 
-      # Issue #10 fix 2: inline literal symbol array iterated and dispatched
+      # Inline literal symbol array iterated and dispatched
       def test_inline_symbol_array_iteration_emits_method_refs
         refs = collect(<<~RUBY)
           class Runner
@@ -567,7 +567,7 @@ module SorbetDeadcode
         refute refs.any? { |r| r.kind == :dynamic_namespace }
       end
 
-      # Issue #10 fix 2: symbol array via a constant, then iterated
+      # Symbol array via a constant, then iterated
       def test_constant_symbol_array_iteration_emits_method_refs
         refs = collect(<<~RUBY)
           class Runner

@@ -224,7 +224,7 @@ module SorbetDeadcode
         assert_includes dead_names, "truly_dead"
       end
 
-      # Issue #10 fix 3: :report mode reports namespace-dispatched methods as dead
+      # :report mode reports namespace-dispatched methods as dead
       # (downgraded to :low confidence) instead of excluding them.
       def test_report_mode_reports_variable_dispatched_methods
         source = <<~RUBY
@@ -254,7 +254,7 @@ module SorbetDeadcode
         FileUtils.remove_entry(dir) if dir
       end
 
-      # Issue #10 fix 4 VALIDATION: the LSP cross-check cannot rescue this case.
+      # VALIDATION: the LSP cross-check cannot rescue this case.
       # Sorbet's textDocument/references is static and also cannot resolve
       # __send__(variable), so an LSP pass over a :report-mode candidate would find
       # zero references and confirm it dead — a false positive. This test documents
