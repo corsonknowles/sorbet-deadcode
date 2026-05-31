@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Added (issue #10 — dynamic dispatch refinements)
+- **Fix 1 — interpolation prefix via local variable**: `m = "dump_#{x}"; send(m)` now
+  emits a `dump_` method-prefix reference instead of excluding the whole namespace.
+- **Fix 2 — finite symbol-list iteration**: `[:a, :b].each { |m| send(m) }` and
+  `METHODS.each { |m| send(m) }` (where `METHODS = [:a, :b].freeze`) now resolve to the
+  exact method names rather than excluding the namespace.
+- **Fix 3 — `dynamic_dispatch: :report` mode**: instead of excluding methods in a
+  namespace with unresolvable variable dispatch, report them as `:low` confidence
+  candidates for review (opt-in; default remains `:exclude`).
+- **Fix 4 — LSP cross-check (validated, not adopted as default)**: investigated using the
+  LSP pass to validate variable-dispatch candidates instead of excluding them. **Finding:
+  Sorbet's `textDocument/references` is static and cannot resolve `__send__(variable)` /
+  interpolated dispatch any better than Prism**, so dropping the conservative exclusion in
+  hybrid mode would reintroduce the exact `MemberSerializer#dump_*` false positive. The
+  `:exclude` default is therefore retained; fixes 1/2 shrink its blast radius and fix 3 is
+  the explicit review escape hatch. See `test_report_mode_candidate_has_no_static_references`.
+
 ### Changed
 - **`--verify` is now the default** — ripgrep verification runs automatically after every
   analysis pass. Use `--no-verify` to opt out. This eliminates the bulk of name-collision

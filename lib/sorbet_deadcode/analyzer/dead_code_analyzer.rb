@@ -20,10 +20,19 @@ module SorbetDeadcode
       # are collected from them). Use this to include exe/, spec/, or any other directory
       # that calls into the definitions under @paths — so public API methods are not
       # falsely reported as dead just because callers live outside the definition scope.
-      def initialize(paths:, exclude_paths: [], reference_paths: nil)
+      # dynamic_dispatch (issue #10):
+      #   :exclude (default) — methods in a namespace containing a variable-target
+      #     send/__send__/public_send are kept alive (conservative, zero false positives).
+      #   :report — those methods are NOT kept alive by the namespace fallback; they
+      #     are reported as dead but the Confidence classifier marks them :low so the
+      #     user can review. Use with caution (may include false positives).
+      #   Method-prefix resolution (from interpolated dispatch and issue #10 fixes 1/2)
+      #   always keeps precisely-resolved methods alive regardless of mode.
+      def initialize(paths:, exclude_paths: [], reference_paths: nil, dynamic_dispatch: :exclude)
         @paths = Array(paths)
         @exclude_paths = Array(exclude_paths)
         @reference_paths = reference_paths ? Array(reference_paths) : []
+        @dynamic_dispatch = dynamic_dispatch
         @definitions = []
         @references = []
         @type_resolver = Resolver::TypeResolver.new
@@ -176,7 +185,14 @@ module SorbetDeadcode
       # - their name starts with a collected interpolation prefix (`dump_#{x}`), or
       # - their owning namespace contains a non-literal send/__send__/public_send.
       def dynamically_dispatched?(definition, ref_index)
+        # Precise prefix resolution always keeps a method alive (interpolated
+        # dispatch and issue #10 fixes 1/2 produce these).
         return true if ref_index[:method_prefixes].any? { |p| definition.name.start_with?(p) }
+
+        # Namespace-level fallback for unresolvable variable dispatch. In :report
+        # mode we don't exclude here — the method is reported but downgraded to
+        # :low confidence by the Confidence classifier instead.
+        return false if @dynamic_dispatch == :report
 
         !!definition.owner_name && ref_index[:dynamic_namespaces].include?(definition.owner_name)
       end
