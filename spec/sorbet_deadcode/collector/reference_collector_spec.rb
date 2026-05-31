@@ -567,6 +567,30 @@ module SorbetDeadcode
       end
 
       # Local var assigned an interpolated string with a prefix
+      def test_local_prefix_does_not_leak_across_methods
+        # `m` is assigned an interpolated prefix in `a`, then reused as a plain
+        # variable in `b`. The `dump_` prefix must NOT leak into b's send(m).
+        refs = collect(<<~'RUBY')
+          class Worker
+            def a(x)
+              m = "dump_#{x}"
+              send(m)
+            end
+
+            def b(obj)
+              m = obj
+              send(m)
+            end
+          end
+        RUBY
+
+        prefixes = refs.select { |r| r.kind == :method_prefix }.map(&:name)
+        # exactly one dump_ prefix (from method a), none leaked into b
+        assert_equal ["dump_"], prefixes
+        # b's send(m) falls back to the namespace exclusion
+        assert refs.any? { |r| r.kind == :dynamic_namespace }
+      end
+
       def test_local_var_interpolation_prefix_emits_method_prefix
         refs = collect(<<~'RUBY')
           class Serializer

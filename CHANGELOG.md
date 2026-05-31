@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Fixed
+- **ReferenceCollector method-local state leak** (#28) — interpolation-prefix and
+  write-based type tracking were file-scoped, so `m = "dump_#{x}"` in one method
+  leaked a `dump_` prefix into another method reusing the name `m`. These maps are
+  now snapshot/restored around each method body, matching local-variable scoping.
+
+### Changed
+- **Graceful degradation when ripgrep is missing** (#29) — now that `--verify` is the
+  default, a missing `rg` no longer crashes: the verifier returns candidates unverified
+  and the classifier marks them `:review` / `:ripgrep_unavailable`, each with a clear
+  message. Centralized in a new `SorbetDeadcode::Ripgrep.available?` helper.
+
 ### Added
 - **`Classifier` post-processing step + `--classify` / `--only`** (closes #18) — annotates
   each candidate with a confidence tier, reference count, risk flags, and a suggested action,

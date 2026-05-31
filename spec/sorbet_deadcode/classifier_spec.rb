@@ -90,6 +90,31 @@ module SorbetDeadcode
       assert_equal [], Classifier.new(project_root: @dir).classify([])
     end
 
+    def test_degrades_gracefully_when_ripgrep_missing
+      path = write("app/foo.rb", "class Foo\n  def thing\n  end\nend\n")
+      candidate = defn("thing", location: "#{path}:2")
+
+      out = capture_stderr do
+        SorbetDeadcode::Ripgrep.stub(:available?, false) do
+          @result = Classifier.new(project_root: @dir).classify([candidate])
+        end
+      end
+
+      assert_match(/ripgrep .* not found/, out)
+      assert_equal 1, @result.size
+      assert_equal :review, @result.first.suggested_action
+      assert_includes @result.first.flags, :ripgrep_unavailable
+    end
+
+    def capture_stderr
+      original = $stderr
+      $stderr = StringIO.new
+      yield
+      $stderr.string
+    ensure
+      $stderr = original
+    end
+
     def test_exclude_paths_drops_spec_reference
       path = write("app/foo.rb", "class Foo\n  def excluded_check\n  end\nend\n")
       write("spec/foo_spec.rb", "Foo.new.excluded_check\n")
