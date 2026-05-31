@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+- **`--verify` is now the default** — ripgrep verification runs automatically after every
+  analysis pass. Use `--no-verify` to opt out. This eliminates the bulk of name-collision
+  false positives with negligible overhead (~seconds on large repos).
+
 ### Added
 - **Framework DSL plugins** (closes #3) — `delegate`, AASM events, and GraphQL mutations
   now emit method references so their callback targets and generated methods stay alive:

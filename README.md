@@ -27,39 +27,51 @@ gem "sorbet-deadcode", group: :development
 ## Usage
 
 ```bash
-# Analyze current directory
+# Recommended: scan a pack with full cross-reference context and ripgrep verification
+sorbet-deadcode packs/my_pack/ --reference-root packs/ --project-root .
+
+# Scan the current directory (quick single-scope check)
 sorbet-deadcode .
 
-# Exclude specs (find production-only dead code)
-sorbet-deadcode --no-specs .
+# Exclude specs from definitions (non-production dead code only)
+sorbet-deadcode --no-specs packs/my_pack/
 
-# Exclude specific paths
-sorbet-deadcode -x vendor/ -x tmp/ .
-
-# Analyze specific directories
-sorbet-deadcode app/ lib/
+# Skip the ripgrep verification pass (faster, more false positives)
+sorbet-deadcode --no-verify packs/my_pack/
 ```
 
-### Verified Mode (Prism + ripgrep)
+### Ripgrep Verification (Default)
 
-By default, `sorbet-deadcode` uses Prism-based static analysis only. Add `--verify`
-to run a follow-up ripgrep pass that checks whether each candidate's name actually
-appears elsewhere in the codebase. This eliminates false positives much faster than
-individual searches.
+`sorbet-deadcode` runs a ripgrep second pass by default to confirm each candidate
+appears ≤1 time in the codebase (i.e. only at its definition). This eliminates the
+bulk of name-collision false positives and is very fast (~seconds even on large repos).
+
+Use `--no-verify` to skip it (e.g. for a quick exploratory scan or if `rg` is not installed).
 
 ```bash
-# Fast mode (Prism only)
-sorbet-deadcode .
+# Default: Prism analysis + ripgrep verification (recommended)
+sorbet-deadcode packs/my_pack/
 
-# Verified mode (Prism + ripgrep confirmation)
-sorbet-deadcode --verify .
-
-# Verified mode with project root and exclusions
-sorbet-deadcode --verify --project-root /path/to/project -x vendor/ app/ lib/
+# Skip verification for speed
+sorbet-deadcode --no-verify packs/my_pack/
 ```
 
-The `--verify` flag works with all analysis modes (`--lsp`, `--hybrid`, `--file-table`).
-It requires `rg` (ripgrep) to be installed on your system.
+### Cross-Reference Context (`--reference-root`)
+
+The most impactful flag for accuracy in a monorepo. Tells the tool to scan a broader
+directory for *references only* so that methods called from outside the analyzed pack
+are not falsely reported as dead.
+
+```bash
+# Without: only references from within packs/my_pack/ are considered
+sorbet-deadcode packs/my_pack/
+
+# With: references from all 75K pack files are considered
+sorbet-deadcode packs/my_pack/ --reference-root packs/ --project-root .
+```
+
+The `--project-root` enables automatic `config/routes.rb` scanning to keep
+controller actions alive (see [Route Scanning](#route-scanning) below).
 
 ### Reference Root (scanning callers outside your definition path)
 

@@ -11,7 +11,7 @@ options = {
   lsp: false,
   hybrid: false,
   file_table: false,
-  verify: false,
+  verify: true,
   parallel: 10,
   project_root: ".",
   reference_root: nil,
@@ -45,8 +45,8 @@ OptionParser.new do |opts|
     options[:file_table] = true
   end
 
-  opts.on("--verify", "Verify candidates with ripgrep (reduces false positives)") do
-    options[:verify] = true
+  opts.on("--no-verify", "Skip ripgrep verification pass (faster but more false positives)") do
+    options[:verify] = false
   end
 
   opts.on("--parallel N", Integer, "Number of concurrent LSP queries (default: 10, use with --lsp or --hybrid)") do |n|
