@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Removed
+- **Dropped Ruby 3.3 support early** — minimum required Ruby is now 3.4. The reason is
+  narrow and deliberate: the `--report`/`--index` path uses `Time#iso8601`, which needs
+  `require "time"`. On Ruby 3.4+ `time` is already loaded in our runtime, but on 3.3 it is
+  not, so a minimal `exe/` invocation raised `NoMethodError: undefined method 'iso8601'`.
+  Rather than carry a defensive `require "time"` for one version, we dropped 3.3 from the
+  supported set and the CI matrix (now 3.4 and 4.0). **Users who still need Ruby 3.3 can
+  add `require "time"` themselves** (e.g. in their app boot) and the tool will work.
+
 ### Fixed
 - **Mailer-preview detection too broad** (#32) — any class whose name merely ended in
   `Preview` (e.g. a `DataPreview` service) had all its methods marked alive, hiding genuinely
