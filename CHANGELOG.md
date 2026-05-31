@@ -3,6 +3,13 @@
 ## Unreleased
 
 ### Added
+- **`Classifier` post-processing step + `--classify` / `--only`** (closes #18) — annotates
+  each candidate with a confidence tier, reference count, risk flags, and a suggested action,
+  folding the manual verification ritual into one pass:
+  - flags: `:live_reference`, `:spec_only`, `:non_ruby_reference`, `:inline_constant`
+  - actions: `:keep` (real production caller), `:delete_with_spec` (spec-only refs),
+    `:review` (non-Ruby ref / inline constant), `:safe_delete` (no references at all)
+  - `--classify` prints the annotation per candidate; `--only ACTION` filters to one action.
 - **Dynamic dispatch refinements** (closes #10) — narrows the conservative
   "exclude the whole namespace" behavior for variable-target `send`/`__send__`/`public_send`:
   - Interpolation prefix via local variable: `m = "dump_#{x}"; send(m)` emits a `dump_`
