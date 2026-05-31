@@ -61,6 +61,37 @@ sorbet-deadcode --verify --project-root /path/to/project -x vendor/ app/ lib/
 The `--verify` flag works with all analysis modes (`--lsp`, `--hybrid`, `--file-table`).
 It requires `rg` (ripgrep) to be installed on your system.
 
+### Reference Root (scanning callers outside your definition path)
+
+When analyzing a subdirectory (e.g. `lib/`), callers in other directories (e.g. `exe/`,
+`spec/`, or other packs) are invisible to the analyzer, causing public API methods to
+appear dead. Use `--reference-root` to scan a broader tree for *references only* — no
+definitions are collected from those files.
+
+```bash
+# Definitions from lib/, references from the whole project
+sorbet-deadcode lib/ --reference-root .
+
+# In a monorepo: definitions from one pack, references from all packs
+sorbet-deadcode packs/my_pack/ --reference-root packs/ --project-root .
+```
+
+### False-Positive Handling
+
+`sorbet-deadcode` detects and suppresses several classes of dynamic dispatch that
+would otherwise produce false positives:
+
+| Pattern | Example | Handling |
+|---------|---------|----------|
+| Interpolated dispatch | `public_send("dump_#{type}")` | Keeps all `dump_*` methods alive |
+| Variable dispatch | `__send__(method_name)` | Keeps all methods in the namespace alive |
+| Inline constant nesting | `PARENT = [CHILD = 1]` | Never reports `PARENT` dead while `CHILD` is alive |
+| Rails callbacks | `validate :check_name`, `before_save :normalize` | Keeps callback targets alive |
+| `accepts_nested_attributes_for` | `accepts_nested_attributes_for :items` | Keeps `items_attributes=` overrides alive |
+| `Prism::Visitor` subclasses | `class MyVisitor < Prism::Visitor` | Keeps all `visit_*` methods alive |
+| Mailer previews | `class FooMailerPreview` | Keeps the class and all preview actions alive |
+| Always-alive methods | `initialize`, `respond_to_missing?`, etc. | Never reported dead |
+
 ## How It Works
 
 1. **Parse** all Ruby files with [Prism](https://github.com/ruby/prism)
