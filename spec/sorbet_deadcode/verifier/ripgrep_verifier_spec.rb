@@ -14,6 +14,25 @@ module SorbetDeadcode
         assert_equal [], @verifier.verify([])
       end
 
+      def test_returns_candidates_unverified_when_ripgrep_missing
+        candidate = Definition.new(name: "foo", full_name: "Foo#foo", kind: :method, location: "f:1")
+        out = capture_stderr do
+          SorbetDeadcode::Ripgrep.stub(:available?, false) do
+            assert_equal [candidate], @verifier.verify([candidate])
+          end
+        end
+        assert_match(/ripgrep .* not found/, out)
+      end
+
+      def capture_stderr
+        original = $stderr
+        $stderr = StringIO.new
+        yield
+        $stderr.string
+      ensure
+        $stderr = original
+      end
+
       def test_method_names_with_question_mark_matched_literally
         # Methods ending in `?` must not be treated as regex quantifiers.
         # `valid?` as a regex would mean "optionally match 'd'" — wrong.

@@ -101,19 +101,24 @@ module SorbetDeadcode
         old_method = @current_method_name
         @current_method_name = node.name.to_s
 
-        added_params = []
+        # Local variables (and our derived tracking of them — types and interpolation
+        # prefixes) do not outlive their defining method, so snapshot and restore the
+        # per-method maps around the body. Without this, `m = "dump_#{x}"` in one method
+        # would leak a `dump_` prefix into a different method that reuses the name `m`.
+        saved_local_types = @local_types.dup
+        saved_local_prefixes = @local_prefixes.dup
+
         if @type_resolver && current_namespace
           sig = @type_resolver.method_signatures.dig(current_namespace, @current_method_name)
           sig&.dig(:params)&.each do |param_name, param_type|
             @local_types[param_name] = param_type
-            added_params << param_name
           end
         end
 
         super
 
-        # Clear only the param types we added for this method.
-        added_params.each { |k| @local_types.delete(k) }
+        @local_types = saved_local_types
+        @local_prefixes = saved_local_prefixes
         @current_method_name = old_method
       end
 

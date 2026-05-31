@@ -35,11 +35,30 @@ module SorbetDeadcode
     def classify(candidates)
       return [] if candidates.empty?
 
+      unless Ripgrep.available?
+        $stderr.puts "[sorbet-deadcode] ripgrep (rg) not found — classifying without reference " \
+                     "data. Install ripgrep for accurate flags/actions."
+        return candidates.map { |defn| unverified_result(defn) }
+      end
+
       refs = reference_files_by_name(candidates.map(&:name).uniq)
       candidates.map { |defn| classify_one(defn, refs[defn.name] || {}) }
     end
 
     private
+
+    # Fallback annotation when ripgrep is unavailable: we can't count references, so
+    # mark every candidate for manual review at low confidence.
+    def unverified_result(definition)
+      Result.new(
+        definition: definition,
+        confidence: Analyzer::Confidence::LOW,
+        reference_count: nil,
+        external_reference_count: nil,
+        flags: [:ripgrep_unavailable],
+        suggested_action: :review,
+      )
+    end
 
     def classify_one(definition, files_hash)
       defn_abs = File.expand_path(definition.location.split(":").first.to_s)

@@ -17,6 +17,12 @@ module SorbetDeadcode
       def verify(candidates)
         return [] if candidates.empty?
 
+        unless Ripgrep.available?
+          $stderr.puts "[sorbet-deadcode] ripgrep (rg) not found — skipping verification. " \
+                       "Install ripgrep for fewer false positives, or pass --no-verify."
+          return candidates
+        end
+
         by_name = candidates.group_by(&:name)
         pattern_file = write_pattern_file(by_name.keys)
 
