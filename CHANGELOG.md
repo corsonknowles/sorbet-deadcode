@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Removed
+- **Dropped Ruby 3.3 support** — minimum required Ruby is now 3.4. Ruby 3.3 lacked some
+  default-gem autoloads the tool relied on (e.g. `Time#iso8601` in the `--report`/`--index`
+  path), and dropping it lets the codebase target the 3.4+ baseline. CI now runs on 3.4 and 4.0.
+
 ### Fixed
 - **ReferenceCollector method-local state leak** (#28) — interpolation-prefix and
   write-based type tracking were file-scoped, so `m = "dump_#{x}"` in one method
