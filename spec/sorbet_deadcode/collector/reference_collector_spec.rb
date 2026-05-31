@@ -463,6 +463,63 @@ module SorbetDeadcode
         assert ns_ref
       end
 
+      def test_rails_named_base_generator_marks_namespace_dynamic
+        refs = collect(<<~RUBY)
+          class AppGenerator < Rails::Generators::NamedBase
+            def copy_adapter_file; end
+            def add_to_list; end
+          end
+        RUBY
+
+        ns_ref = refs.find { |r| r.kind == :dynamic_namespace }
+        assert_equal "AppGenerator", ns_ref.name
+      end
+
+      def test_generator_dynamic_namespace_uses_fully_qualified_name
+        # The dynamic_namespace ref must match the fully-qualified owner_name recorded for
+        # nested method definitions, otherwise the methods are not kept alive.
+        refs = collect(<<~RUBY)
+          module AppEcosystem
+            class AppGenerator < Rails::Generators::NamedBase
+              def copy_adapter_file; end
+            end
+          end
+        RUBY
+
+        ns_ref = refs.find { |r| r.kind == :dynamic_namespace }
+        assert_equal "AppEcosystem::AppGenerator", ns_ref.name
+      end
+
+      def test_rails_base_generator_marks_namespace_dynamic
+        refs = collect(<<~RUBY)
+          class MyGenerator < Rails::Generators::Base
+            def run_step; end
+          end
+        RUBY
+
+        assert refs.any? { |r| r.kind == :dynamic_namespace }
+      end
+
+      def test_thor_subclass_marks_namespace_dynamic
+        refs = collect(<<~RUBY)
+          class Cli < Thor
+            def build; end
+          end
+        RUBY
+
+        assert refs.any? { |r| r.kind == :dynamic_namespace }
+      end
+
+      def test_non_generator_class_is_not_dynamic_via_generator_rule
+        refs = collect(<<~RUBY)
+          class RegularService < ApplicationService
+            def call; end
+          end
+        RUBY
+
+        refute refs.any? { |r| r.kind == :dynamic_namespace }
+      end
+
       def test_non_preview_class_is_not_dynamic
         refs = collect(<<~RUBY)
           class WelcomeService
