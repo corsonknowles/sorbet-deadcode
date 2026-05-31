@@ -3,6 +3,14 @@
 ## Unreleased
 
 ### Fixed
+- **Setter false positives from non-`foo=` assignment forms** (#48) — a writer (`attr_writer`,
+  the writer half of `attr_accessor`, or any `def foo=`) was reported dead when it was only
+  ever invoked through a form whose source text doesn't contain the literal `foo=`:
+  - operator-assignment to a receiver — `obj.foo ||= x`, `obj.foo &&= x`, `obj.foo += 1`
+    (distinct Prism nodes from a plain `obj.foo = x` call); now emits read + `foo=` references.
+  - keyword mass-assignment — `Model.new(foo: x)`, `record.update(foo: x)`, FactoryBot
+    `build(:m, foo: x)`, `assign_attributes(foo: x)`, etc.; now emits a `foo=` reference per
+    symbol key for those constructor/update entry points.
 - **Suffix-interpolation dynamic dispatch** (#49) — methods reached via `public_send("#{x}_start_time")`
   (a dynamic prefix with a literal suffix) were reported dead because the assembled name never
   appears literally. The collector now emits a `:method_suffix` reference (mirroring `:method_prefix`),

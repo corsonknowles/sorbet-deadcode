@@ -184,6 +184,36 @@ module SorbetDeadcode
         assert_includes dead_names, "UNUSED"
       end
 
+      def test_writer_set_via_or_assign_is_alive
+        analyzer = analyze_source(<<~RUBY)
+          class AbilityCache
+            attr_writer :cached_definition
+
+            def fetch
+              self.cached_definition ||= compute
+            end
+          end
+        RUBY
+
+        refute_includes analyzer.dead_definitions.map(&:name), "cached_definition="
+      end
+
+      def test_writer_set_via_mass_assignment_is_alive
+        analyzer = analyze_source(<<~RUBY)
+          class Donation
+            attr_writer :charity_ein
+          end
+
+          class Builder
+            def build
+              Donation.new(charity_ein: "12-3456789")
+            end
+          end
+        RUBY
+
+        refute_includes analyzer.dead_definitions.map(&:name), "charity_ein="
+      end
+
       def test_interpolated_dispatch_keeps_prefix_family_alive
         analyzer = analyze_source(<<~RUBY)
           class Serializer

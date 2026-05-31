@@ -10,6 +10,17 @@ module SorbetDeadcode
 
       DYNAMIC_DISPATCH_METHODS = %w[send __send__ public_send try].to_set.freeze
 
+      # Keyword/mass-assignment entry points: `Model.new(foo: x)`, `record.update(foo: x)`,
+      # FactoryBot `build(:m, foo: x)`, etc. each invoke the `foo=` setter. The keyword key
+      # `foo:` never appears as the literal `foo=`, so without this a write-only attribute
+      # set exclusively through mass-assignment looks dead. Emitting `foo=` references here
+      # is conservative (it can only keep a setter alive).
+      MASS_ASSIGNMENT_METHODS = %w[
+        new create create! build build_stubbed build_stubbed_list
+        update update! update_columns update_attributes update_attributes!
+        assign_attributes attributes= with
+      ].to_set.freeze
+
       # Rails `delegate :foo, :bar, to: :target` creates forwarding methods.
       # The delegated names are referenced via define_method at class load time.
       DELEGATE_DSL_METHODS = %w[delegate].to_set.freeze
@@ -137,6 +148,10 @@ module SorbetDeadcode
         # references so methods tested only through a matcher aren't reported dead.
         collect_predicate_matcher_references(name, location)
 
+        # Keyword mass-assignment (`Model.new(foo: x)`, `build(:m, foo: x)`, etc.) invokes
+        # the `foo=` setter; emit those writer references so set-only attributes aren't dead.
+        collect_mass_assignment_references(node, location) if MASS_ASSIGNMENT_METHODS.include?(name)
+
         # Resolve dispatch over a finite symbol list, e.g. `[:a, :b].each { |m| send(m) }`
         # or `METHODS.each { |m| send(m) }`. Bind the block param to the resolved symbol
         # list while visiting the block so the send(m) inside emits concrete references.
@@ -254,6 +269,25 @@ module SorbetDeadcode
       def visit_constant_write_node(node)
         syms = symbol_array_values(node.value)
         @symbol_array_constants[node.name.to_s] = syms if syms
+        super
+      end
+
+      # Operator-assignment to a method receiver invokes the setter, e.g.
+      # `obj.foo ||= x`, `obj.foo &&= x`, `obj.foo += 1` all call `foo=` (and read `foo`).
+      # These are distinct Prism nodes from a plain `obj.foo = x` CallNode, so without
+      # handling them the setter looks dead even though it is written.
+      def visit_call_or_write_node(node)
+        emit_call_write_references(node)
+        super
+      end
+
+      def visit_call_and_write_node(node)
+        emit_call_write_references(node)
+        super
+      end
+
+      def visit_call_operator_write_node(node)
+        emit_call_write_references(node)
         super
       end
 
@@ -501,6 +535,35 @@ module SorbetDeadcode
             location: location,
             kind: :method,
           )
+        end
+      end
+
+      # Emit read + write references for an operator-assignment to a method receiver
+      # (`obj.foo ||= x`, `obj.foo += 1`): both `foo` and `foo=` are invoked.
+      def emit_call_write_references(node)
+        location = format_location(node.location)
+        receiver_type = node.receiver ? resolve_receiver_type(node.receiver) : nil
+        [node.read_name.to_s, node.write_name.to_s].each do |method_name|
+          @references << Reference.new(name: method_name, location: location, kind: :method, receiver_type: receiver_type)
+        end
+      end
+
+      # Emit `key=` writer references for each symbol keyword argument of a mass-assignment
+      # call, e.g. `Model.new(foo: x, bar: y)` => references `foo=` and `bar=`.
+      def collect_mass_assignment_references(node, location)
+        return unless node.arguments
+
+        node.arguments.arguments.each do |arg|
+          next unless arg.is_a?(Prism::KeywordHashNode) || arg.is_a?(Prism::HashNode)
+
+          arg.elements.each do |assoc|
+            next unless assoc.is_a?(Prism::AssocNode)
+
+            key = assoc.key
+            next unless key.is_a?(Prism::SymbolNode)
+
+            @references << Reference.new(name: "#{key.unescaped}=", location: location, kind: :method)
+          end
         end
       end
 
