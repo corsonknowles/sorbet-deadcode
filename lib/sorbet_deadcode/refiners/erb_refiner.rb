@@ -28,28 +28,25 @@ module SorbetDeadcode
 
       private
 
+      METHOD_KINDS = %i[method attr_reader attr_writer].freeze
+
       def build_referenced_set
         refs = Scanners::ErbScanner.new(@project_root, globs: @globs).references
 
         methods = Set.new
         constants = Set.new
         refs.each do |ref|
-          case ref.kind
-          when :method then methods << ref.name
-          when :constant then constants << ref.name
-          end
+          methods << ref.name if ref.kind == :method
+          constants << ref.name if ref.kind == :constant
         end
         { methods: methods, constants: constants }
       end
 
       def erb_referenced?(defn, referenced)
-        case defn.kind
-        when :method, :attr_reader, :attr_writer
-          referenced[:methods].include?(defn.name)
-        when :class, :module, :constant
-          referenced[:constants].include?(defn.name) ||
-            referenced[:constants].include?(defn.full_name)
-        end
+        return referenced[:methods].include?(defn.name) if METHOD_KINDS.include?(defn.kind)
+
+        referenced[:constants].include?(defn.name) ||
+          referenced[:constants].include?(defn.full_name)
       end
     end
   end

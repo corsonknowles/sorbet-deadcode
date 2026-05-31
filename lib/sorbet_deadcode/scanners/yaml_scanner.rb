@@ -110,7 +110,7 @@ module SorbetDeadcode
       def git_tracked_files
         pathspecs = @globs.map { |g| ":(glob)#{g}" }
         out = IO.popen(["git", "-C", @project_root, "ls-files", "-z", "--", *pathspecs], err: File::NULL, &:read)
-        return nil unless $?&.success?
+        return nil unless $?.success?
 
         out.split("\x00").reject(&:empty?).map { |rel| File.join(@project_root, rel) }
       rescue StandardError
