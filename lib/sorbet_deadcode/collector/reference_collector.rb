@@ -527,15 +527,21 @@ module SorbetDeadcode
       end
 
       # ActionMailer::Preview subclasses are invoked by the Rails preview UI via
-      # routes, not by explicit Ruby calls. Covers both direct inheritance and the
-      # naming convention (classes whose name ends in MailerPreview / Preview).
+      # routes, not by explicit Ruby calls, so their action methods must be kept alive.
+      #
+      # Detection is deliberately conservative to avoid hiding dead code in unrelated
+      # classes that merely end in "Preview" (e.g. a `DataPreview` service):
+      #   - inherits from a *Preview base (e.g. ActionMailer::Preview), OR
+      #   - is named *MailerPreview (mailer-specific convention), OR
+      #   - is named *Preview AND lives in a mailer_previews path (Rails convention).
       def mailer_preview_class?(class_node)
         superclass = class_node.superclass
-        name = node_class_name(class_node)
+        return true if superclass && superclass.slice.include?("Preview")
 
-        (superclass && superclass.slice.include?("Preview")) ||
-          name.end_with?("MailerPreview") ||
-          name.end_with?("Preview")
+        name = node_class_name(class_node)
+        return true if name.end_with?("MailerPreview")
+
+        name.end_with?("Preview") && @file_path.include?("mailer_preview")
       end
 
       def node_class_name(class_node)

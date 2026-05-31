@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Fixed
+- **Mailer-preview detection too broad** (#32) — any class whose name merely ended in
+  `Preview` (e.g. a `DataPreview` service) had all its methods marked alive, hiding genuinely
+  dead code. Detection is now conservative: a class qualifies only if it inherits from a
+  `*Preview` base, is named `*MailerPreview`, or is named `*Preview` and lives in a
+  `mailer_previews` path (Rails convention).
 - **ReferenceCollector method-local state leak** (#28) — interpolation-prefix and
   write-based type tracking were file-scoped, so `m = "dump_#{x}"` in one method
   leaked a `dump_` prefix into another method reusing the name `m`. These maps are
