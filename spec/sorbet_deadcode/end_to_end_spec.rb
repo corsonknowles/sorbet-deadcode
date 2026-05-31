@@ -21,8 +21,12 @@ module SorbetDeadcode
       assert_includes dead_names, "User#obsolete_export_format"
       assert_includes dead_names, "Company#old_billing_plan"
       assert_includes dead_names, "UserService#unused_helper"
-      assert_includes dead_names, "NotificationService#send_deprecated_alert"
       assert_includes dead_names, "Report#archive"
+
+      # send_deprecated_alert is NOT dead: NotificationService#dispatch calls
+      # public_send(:"send_#{type}"), so any send_* method may be reached. The
+      # interpolated-dispatch detector keeps the whole send_* family alive.
+      refute_includes dead_names, "NotificationService#send_deprecated_alert"
     end
 
     def test_including_specs_keeps_tested_methods_alive

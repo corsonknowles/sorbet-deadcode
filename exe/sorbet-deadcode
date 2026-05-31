@@ -14,6 +14,7 @@ options = {
   verify: false,
   parallel: 10,
   project_root: ".",
+  reference_root: nil,
 }
 
 OptionParser.new do |opts|
@@ -49,6 +50,12 @@ OptionParser.new do |opts|
 
   opts.on("--project-root DIR", "Project root where sorbet/ lives (default: .)") do |dir|
     options[:project_root] = dir
+  end
+
+  opts.on("--reference-root DIR",
+    "Also scan DIR for references (not definitions). Prevents public API",
+    "methods from appearing dead when callers live outside --paths.") do |dir|
+    options[:reference_root] = dir
   end
 
   opts.on("-h", "--help", "Show this help") do
@@ -95,6 +102,7 @@ else
   SorbetDeadcode.analyze(
     options[:paths],
     exclude_paths: options[:exclude_paths],
+    reference_paths: options[:reference_root],
   )
 end
 

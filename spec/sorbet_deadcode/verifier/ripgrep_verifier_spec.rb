@@ -14,6 +14,45 @@ module SorbetDeadcode
         assert_equal [], @verifier.verify([])
       end
 
+      def test_method_names_with_question_mark_matched_literally
+        # Methods ending in `?` must not be treated as regex quantifiers.
+        # `valid?` as a regex would mean "optionally match 'd'" — wrong.
+        dir = Dir.mktmpdir
+        File.write(File.join(dir, "model.rb"), <<~RUBY)
+          class Model
+            def valid?
+              true
+            end
+
+            def truly_dead_predicate?
+            end
+          end
+
+          Model.new.valid?
+        RUBY
+
+        candidates = SorbetDeadcode.analyze(File.join(dir, "app"))
+        verifier = RipgrepVerifier.new(project_root: dir)
+
+        all_candidates = SorbetDeadcode.analyze(dir)
+        verified = verifier.verify(all_candidates)
+        verified_names = verified.map(&:name)
+
+        refute_includes verified_names, "valid?"
+        assert_includes verified_names, "truly_dead_predicate?"
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_glob_pattern_passes_through_explicit_globs
+        # A path that already contains a glob is used verbatim.
+        assert_equal "**/spec/**", @verifier.send(:glob_pattern, "**/spec/**")
+      end
+
+      def test_glob_pattern_wraps_plain_paths
+        assert_equal "**/spec/**", @verifier.send(:glob_pattern, "spec/")
+      end
+
       def test_truly_dead_methods_survive_verification
         candidates = SorbetDeadcode.analyze(
           File.join(FIXTURES_PATH, "app"),
@@ -24,8 +63,8 @@ module SorbetDeadcode
 
         assert_includes verified_names, "Company#old_billing_plan"
         assert_includes verified_names, "UserService#unused_helper"
-        assert_includes verified_names, "NotificationService#send_deprecated_alert"
         assert_includes verified_names, "Report#archive"
+        refute_includes verified_names, "NotificationService#send_deprecated_alert"
       end
 
       def test_methods_with_references_elsewhere_are_filtered_out
@@ -69,8 +108,8 @@ module SorbetDeadcode
 
         assert_includes verified_names, "Company#old_billing_plan"
         assert_includes verified_names, "UserService#unused_helper"
-        assert_includes verified_names, "NotificationService#send_deprecated_alert"
         assert_includes verified_names, "Report#archive"
+        refute_includes verified_names, "NotificationService#send_deprecated_alert"
       end
     end
   end

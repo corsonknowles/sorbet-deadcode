@@ -54,7 +54,16 @@ module SorbetDeadcode
 
         send_request("shutdown", nil)
         send_notification("exit", nil)
+        close_streams
+      rescue Errno::ESRCH, IOError
+        # Process already exited
+      ensure
+        @started = false
+      end
 
+      private
+
+      def close_streams
         @stdin&.close
         @stdout&.close
         @stderr_thread&.join(5)
@@ -64,13 +73,7 @@ module SorbetDeadcode
           Process.kill("TERM", @wait_thread.pid)
           @wait_thread.join(5)
         end
-      rescue Errno::ESRCH, IOError
-        # Process already exited
-      ensure
-        @started = false
       end
-
-      private
 
       def check_sorbet_cache
         cache_dir = File.join(@project_root, "tmp", "cache", "sorbet")
@@ -207,9 +210,7 @@ module SorbetDeadcode
           end
         end
 
-        return nil unless content_length
-
-        body = @stdout.read(content_length)
+        body = @stdout.read(content_length || 0)
         return nil if body.nil? || body.empty?
 
         JSON.parse(body)

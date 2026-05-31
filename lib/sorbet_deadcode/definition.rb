@@ -4,9 +4,12 @@ module SorbetDeadcode
   class Definition
     KINDS = %i[method class module constant attr_reader attr_writer].freeze
 
-    attr_reader :name, :full_name, :kind, :location, :owner_name
+    attr_reader :name, :full_name, :kind, :location, :owner_name, :co_located_names
 
-    def initialize(name:, full_name:, kind:, location:, owner_name: nil)
+    # co_located_names: names of other definitions whose source is nested inside
+    # this definition (e.g. `PARENT = [CHILD = 1]`). Removing this definition would
+    # also remove them, so it must not be reported dead while any of them is alive.
+    def initialize(name:, full_name:, kind:, location:, owner_name: nil, co_located_names: [])
       raise ArgumentError, "unknown kind: #{kind}" unless KINDS.include?(kind)
 
       @name = name
@@ -14,6 +17,7 @@ module SorbetDeadcode
       @kind = kind
       @location = location
       @owner_name = owner_name
+      @co_located_names = co_located_names
     end
 
     def qualified_name

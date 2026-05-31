@@ -184,6 +184,104 @@ module SorbetDeadcode
         assert_includes dead_names, "UNUSED"
       end
 
+      def test_interpolated_dispatch_keeps_prefix_family_alive
+        analyzer = analyze_source(<<~RUBY)
+          class Serializer
+            def dump_company
+            end
+
+            def dump_employee
+            end
+
+            def render(type)
+              public_send("dump_\#{type}")
+            end
+          end
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "dump_company"
+        refute_includes dead_names, "dump_employee"
+      end
+
+      def test_interpolated_dispatch_does_not_protect_other_prefixes
+        analyzer = analyze_source(<<~RUBY)
+          class Serializer
+            def dump_company
+            end
+
+            def truly_dead
+            end
+
+            def render(type)
+              public_send("dump_\#{type}")
+            end
+          end
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "dump_company"
+        assert_includes dead_names, "truly_dead"
+      end
+
+      def test_dynamic_dispatch_on_variable_protects_namespace
+        # __send__(method_name) where method_name is a local variable: we can't
+        # know the target, so every method in the class is kept alive.
+        analyzer = analyze_source(<<~RUBY)
+          class MemberSerializer
+            def dump_company_member
+            end
+
+            def dump_accountant
+            end
+
+            def dump(member)
+              method_name = "dump_\#{member.class.name}".to_sym
+              __send__(method_name, member)
+            end
+          end
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "dump_company_member"
+        refute_includes dead_names, "dump_accountant"
+      end
+
+      def test_inline_constant_in_array_keeps_parent_alive
+        # PARENT defines CHILD as a side effect; CHILD is referenced, so deleting
+        # PARENT would break CHILD. PARENT must not be reported dead.
+        analyzer = analyze_source(<<~RUBY)
+          class Config
+            CATEGORIES = [
+              CATEGORY_A = "a",
+              CATEGORY_B = "b",
+            ].freeze
+          end
+
+          Config::CATEGORY_A
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "CATEGORIES"
+        refute_includes dead_names, "CATEGORY_A"
+      end
+
+      def test_inline_constant_parent_dead_when_no_child_referenced
+        analyzer = analyze_source(<<~RUBY)
+          class Config
+            CATEGORIES = [
+              CATEGORY_A = "a",
+              CATEGORY_B = "b",
+            ].freeze
+          end
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        # No child is referenced, so the whole group is genuinely dead.
+        assert_includes dead_names, "CATEGORIES"
+        assert_includes dead_names, "CATEGORY_A"
+      end
+
       def test_module_alive_when_referenced
         analyzer = analyze_source(<<~RUBY)
           module UsedModule
@@ -198,6 +296,318 @@ module SorbetDeadcode
         dead_names = analyzer.dead_definitions.map(&:name)
         refute_includes dead_names, "UsedModule"
         assert_includes dead_names, "DeadModule"
+      end
+
+      def test_respond_to_missing_is_never_dead
+        analyzer = analyze_source(<<~RUBY)
+          class Proxy
+            def respond_to_missing?(name, include_private = false)
+              @target.respond_to?(name, include_private)
+            end
+          end
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "respond_to_missing?"
+      end
+
+      def test_validate_callback_method_is_alive
+        analyzer = analyze_source(<<~RUBY)
+          class Order
+            validate :check_total
+
+            def check_total
+              errors.add(:total, "must be positive") if total <= 0
+            end
+          end
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "check_total"
+      end
+
+      def test_before_save_callback_method_is_alive
+        analyzer = analyze_source(<<~RUBY)
+          class User
+            before_save :normalize_email
+
+            def normalize_email
+              self.email = email.downcase
+            end
+          end
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "normalize_email"
+      end
+
+      def test_mailer_preview_methods_are_alive
+        analyzer = analyze_source(<<~RUBY)
+          class UserMailerPreview
+            def welcome_email
+            end
+          end
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "welcome_email"
+      end
+
+      def test_accepts_nested_attributes_override_is_alive
+        analyzer = analyze_source(<<~RUBY)
+          class Order
+            accepts_nested_attributes_for :line_items
+
+            def line_items_attributes=(attrs)
+              super(attrs.reject { |a| a[:_destroy] })
+            end
+          end
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "line_items_attributes="
+      end
+
+      def test_initialize_is_never_dead
+        analyzer = analyze_source(<<~RUBY)
+          class Service
+            def initialize(name)
+              @name = name
+            end
+          end
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "initialize"
+      end
+
+      def test_module_alive_via_qualified_constant_path
+        analyzer = analyze_source(<<~RUBY)
+          module Outer
+            module Inner
+            end
+          end
+
+          Outer::Inner.new
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "Outer"
+        refute_includes dead_names, "Inner"
+      end
+
+      def test_reference_paths_keeps_public_api_alive
+        dir = Dir.mktmpdir
+        lib_dir = File.join(dir, "lib")
+        exe_dir = File.join(dir, "exe")
+        FileUtils.mkdir_p(lib_dir)
+        FileUtils.mkdir_p(exe_dir)
+
+        File.write(File.join(lib_dir, "service.rb"), <<~RUBY)
+          class Service
+            def public_method
+            end
+
+            def truly_dead
+            end
+          end
+        RUBY
+
+        File.write(File.join(exe_dir, "runner.rb"), <<~RUBY)
+          Service.new.public_method
+        RUBY
+
+        # Without reference_paths: public_method looks dead (caller in exe/ not scanned)
+        analyzer_narrow = DeadCodeAnalyzer.new(paths: [lib_dir])
+        analyzer_narrow.run
+        assert_includes analyzer_narrow.dead_definitions.map(&:name), "public_method"
+
+        # With reference_paths pointing at exe/: public_method is alive
+        analyzer_wide = DeadCodeAnalyzer.new(paths: [lib_dir], reference_paths: [exe_dir])
+        analyzer_wide.run
+        refute_includes analyzer_wide.dead_definitions.map(&:name), "public_method"
+        assert_includes analyzer_wide.dead_definitions.map(&:name), "truly_dead"
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_reference_paths_accepts_single_file
+        dir = Dir.mktmpdir
+        lib_dir = File.join(dir, "lib")
+        FileUtils.mkdir_p(lib_dir)
+        File.write(File.join(lib_dir, "service.rb"), "class S\n  def api; end\nend\n")
+        caller_file = File.join(dir, "caller.rb")
+        File.write(caller_file, "S.new.api\n")
+
+        analyzer = DeadCodeAnalyzer.new(paths: [lib_dir], reference_paths: [caller_file])
+        analyzer.run
+        refute_includes analyzer.dead_definitions.map(&:name), "api"
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_reference_paths_skips_unparseable_files
+        dir = Dir.mktmpdir
+        lib_dir = File.join(dir, "lib")
+        ref_dir = File.join(dir, "ref")
+        FileUtils.mkdir_p([lib_dir, ref_dir])
+        File.write(File.join(lib_dir, "service.rb"), "class S\n  def dead; end\nend\n")
+        File.write(File.join(ref_dir, "broken.rb"), "class Broken\n  def oops(\nend")
+
+        analyzer = DeadCodeAnalyzer.new(paths: [lib_dir], reference_paths: [ref_dir])
+        analyzer.run
+        # The broken ref file is skipped; `dead` remains dead.
+        assert_includes analyzer.dead_definitions.map(&:name), "dead"
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_reference_paths_skips_files_already_in_definition_set
+        dir = Dir.mktmpdir
+        File.write(File.join(dir, "app.rb"), <<~RUBY)
+          class App
+            def self_caller
+              self_caller
+            end
+          end
+        RUBY
+
+        # Passing the same dir as both paths and reference_paths should not
+        # double-count files. self_caller calls itself but is otherwise dead.
+        analyzer = DeadCodeAnalyzer.new(paths: [dir], reference_paths: [dir])
+        analyzer.run
+        # self_caller is an untyped self-call; alive because name is referenced.
+        refute_includes analyzer.dead_definitions.map(&:name), "self_caller"
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_accepts_a_single_file_path
+        dir = Dir.mktmpdir
+        file = File.join(dir, "single.rb")
+        File.write(file, <<~RUBY)
+          class Single
+            def dead_one
+            end
+          end
+        RUBY
+
+        analyzer = DeadCodeAnalyzer.new(paths: file)
+        analyzer.run
+        assert_includes analyzer.dead_definitions.map(&:name), "dead_one"
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_alive_returns_false_for_unknown_kind
+        analyzer = DeadCodeAnalyzer.new(paths: [])
+        fake = Struct.new(:kind, :name, :full_name, :owner_name).new(:weird, "x", "x", nil)
+        index = analyzer.send(:build_reference_index)
+        refute analyzer.send(:alive?, fake, index)
+      end
+
+      def test_build_reference_index_ignores_unknown_reference_kind
+        analyzer = DeadCodeAnalyzer.new(paths: [])
+        fake_ref = Struct.new(:kind).new(:something_else)
+        analyzer.instance_variable_set(:@references, [fake_ref])
+        index = analyzer.send(:build_reference_index)
+        assert_empty index[:untyped_methods]
+        assert_empty index[:constants]
+      end
+
+      def test_skips_unparseable_files
+        dir = Dir.mktmpdir
+        File.write(File.join(dir, "broken.rb"), "class Broken\n  def oops(\nend")
+        File.write(File.join(dir, "ok.rb"), <<~RUBY)
+          class Ok
+            def dead_here
+            end
+          end
+        RUBY
+
+        analyzer = DeadCodeAnalyzer.new(paths: [dir])
+        analyzer.run
+        # Parsing the broken file is skipped without raising; the good file still works.
+        assert_includes analyzer.dead_definitions.map(&:name), "dead_here"
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_top_level_inline_constant_without_owner_stays_alive
+        analyzer = analyze_source(<<~RUBY)
+          PARENT = [CHILD = "x"].freeze
+          CHILD
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "PARENT"
+      end
+
+      def test_sig_extraction_covers_type_shapes
+        # Exercises every branch of SigExtractor's type/param extraction. We only
+        # assert the run completes and returns definitions; the point is coverage
+        # of the sig-parsing paths.
+        analyzer = analyze_source(<<~RUBY)
+          extend T::Sig
+
+          sig { returns(String) }
+          def top_level_method
+          end
+
+          class Wrapper
+            sig { returns(Outer::Inner) }
+            def const_path; end
+
+            sig { returns(T.nilable(String)) }
+            def t_with_arg; end
+
+            sig { returns(T.foo) }
+            def t_without_arg; end
+
+            sig { returns(Kernel.rand) }
+            def call_non_t; end
+
+            sig { returns(bare_helper) }
+            def call_no_receiver; end
+
+            sig { returns }
+            def returns_without_arg; end
+
+            sig { params.returns(String) }
+            def params_without_args; end
+
+            sig { returns(:weird) }
+            def symbol_type; end
+
+            sig { params(x: Integer, y: String).returns(String) }
+            def with_params(x, y); end
+
+            sig { params(Integer).returns(String) }
+            def positional_param; end
+
+            sig { params(**rest).returns(String) }
+            def splat_param; end
+
+            sig { void }
+            def void_method; end
+
+            sig { returns(String).checked(:never) }
+            def chained; end
+
+            sig {}
+            def empty_block; end
+
+            sig
+            def no_block; end
+
+            sig { Helper.configure }
+            def receiver_recursion; end
+          end
+        RUBY
+
+        assert_kind_of Array, analyzer.dead_definitions
+        # The signatures referencing Outer::Inner registered a return type for const_path.
+        assert analyzer.type_resolver.method_signatures.dig("Wrapper", "const_path")
       end
 
       private

@@ -19,10 +19,11 @@ module SorbetDeadcode
   class Error < StandardError; end
 
   class << self
-    def analyze(paths, exclude_paths: [])
+    def analyze(paths, exclude_paths: [], reference_paths: nil)
       analyzer = Analyzer::DeadCodeAnalyzer.new(
         paths: paths,
         exclude_paths: exclude_paths,
+        reference_paths: reference_paths,
       )
       analyzer.run
     end

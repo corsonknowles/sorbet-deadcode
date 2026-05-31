@@ -63,8 +63,38 @@ module SorbetDeadcode
           kind: :constant,
           location: format_location(node.location),
           owner_name: current_namespace,
+          co_located_names: nested_constant_names(node.value),
         )
         super
+      end
+
+      # Ruby evaluates assignments inside literals as side effects:
+      #   PARENT = [CHILD_A = 'a', CHILD_B = 'b'].freeze
+      # defines CHILD_A/CHILD_B. Collect those nested constant names so the parent
+      # is never reported dead while a nested child is still alive.
+      def nested_constant_names(value)
+        names = []
+        collect_nested_constant_writes(value, names)
+        names
+      end
+
+      def collect_nested_constant_writes(node, names)
+        case node
+        when Prism::ConstantWriteNode
+          names << node.name.to_s
+          collect_nested_constant_writes(node.value, names)
+        when Prism::ArrayNode
+          node.elements.each { |el| collect_nested_constant_writes(el, names) }
+        when Prism::HashNode
+          node.elements.each do |assoc|
+            next unless assoc.is_a?(Prism::AssocNode)
+
+            collect_nested_constant_writes(assoc.value, names)
+          end
+        when Prism::CallNode
+          # e.g. `[...].freeze` — descend into the receiver
+          collect_nested_constant_writes(node.receiver, names) if node.receiver
+        end
       end
 
       def visit_call_node(node)
