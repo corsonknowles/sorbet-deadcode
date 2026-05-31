@@ -162,6 +162,12 @@ module SorbetDeadcode
         actions = actions & only_actions if only_actions
         actions -= except_actions if except_actions
 
+        unless actions.empty?
+          # Emit the controller class as a constant reference so it's not reported dead.
+          @references << Reference.new(name: class_name.split("::").last, location: location, kind: :constant)
+          @references << Reference.new(name: class_name, location: location, kind: :constant)
+        end
+
         actions.each do |action|
           @references << Reference.new(
             name: action,
