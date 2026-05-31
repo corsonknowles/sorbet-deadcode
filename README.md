@@ -131,6 +131,7 @@ would otherwise produce false positives:
 | Mailer previews | `class FooMailerPreview` | Keeps the class and all preview actions alive |
 | Routed controller actions | `get '/x', to: 'widgets#index'` | Keeps routed actions alive (`--no-routes` to disable) |
 | Framework YAML | `method: Foo::BarSanitizer.sanitize_x` | Keeps the YAML-referenced method + class alive (`--no-yaml` to disable) |
+| ERB templates | `<%= widget.display_name %>` | Keeps template-referenced methods/constants alive (`--no-erb` to disable) |
 | Always-alive methods | `initialize`, `respond_to_missing?`, etc. | Never reported dead |
 
 ## How It Works

@@ -40,6 +40,8 @@ module SorbetDeadcode
 
       private
 
+      METHOD_KINDS = %i[method attr_reader attr_writer].freeze
+
       def build_referenced_set
         refs = Scanners::YamlScanner.new(
           @project_root, keys: @keys, bare_keys: @bare_keys, globs: @globs
@@ -49,25 +51,22 @@ module SorbetDeadcode
         bare_methods = Set.new  # name only, from configured bare keys
         classes = Set.new
         refs.each do |ref|
-          case ref.kind
-          when :method
+          if ref.kind == :method
             ref.receiver_type ? typed_methods << [ref.receiver_type, ref.name] : bare_methods << ref.name
-          when :constant
-            classes << ref.name
           end
+          classes << ref.name if ref.kind == :constant
         end
         { typed_methods: typed_methods, bare_methods: bare_methods, classes: classes }
       end
 
       def yaml_referenced?(defn, referenced)
-        case defn.kind
-        when :method, :attr_reader, :attr_writer
-          referenced[:typed_methods].include?([defn.owner_name, defn.name]) ||
-            referenced[:bare_methods].include?(defn.name)
-        when :class, :module, :constant
-          referenced[:classes].include?(defn.name) ||
-            referenced[:classes].include?(defn.full_name)
+        if METHOD_KINDS.include?(defn.kind)
+          return referenced[:typed_methods].include?([defn.owner_name, defn.name]) ||
+              referenced[:bare_methods].include?(defn.name)
         end
+
+        referenced[:classes].include?(defn.name) ||
+          referenced[:classes].include?(defn.full_name)
       end
     end
   end
