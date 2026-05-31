@@ -41,21 +41,36 @@ module SorbetDeadcode
       end
 
       def run_ripgrep(pattern_file)
-        cmd = build_rg_command(pattern_file)
+        # Split patterns into two groups and run each exactly once:
+        # - Normal names (no trailing ?/!/=): use -w (word boundaries) for precision
+        # - Special names ending in ?/!/=: -w breaks them because \b won't match
+        #   after a non-word character; use exact -F literal matching instead.
+        names = File.read(pattern_file).lines.map(&:chomp).reject(&:empty?)
+        normal, special = names.partition { |n| !n.match?(/[?!=]$/) }
 
         counts = Hash.new(0)
-        IO.popen(cmd, err: File::NULL) do |io|
-          io.each_line { |line| counts[line.strip] += 1 }
-        end
+        run_with_pattern_list(normal, word_bounded: true, counts: counts)
+        run_with_pattern_list(special, word_bounded: false, counts: counts)
         counts
       end
 
-      def build_rg_command(pattern_file)
-        # -F (fixed-strings) prevents method names like `valid?` or `save!` from
-        # being interpreted as regex (where `?`/`!` are quantifiers). Without -F,
-        # `foo?` becomes regex `foo?` matching `fo` or `foo`, and the matched output
-        # loses the trailing `?`, so counts[name] always comes back 0 for such names.
-        cmd = ["rg", "-F", "-f", pattern_file, "-w", "--no-filename", "-o"]
+      def run_with_pattern_list(names, word_bounded:, counts:)
+        return if names.empty?
+
+        tmp = write_pattern_file(names)
+        begin
+          cmd = build_rg_command(tmp, word_bounded: word_bounded)
+          IO.popen(cmd, err: File::NULL) do |io|
+            io.each_line { |line| counts[line.strip] += 1 }
+          end
+        ensure
+          File.delete(tmp) if tmp && File.exist?(tmp)
+        end
+      end
+
+      def build_rg_command(pattern_file, word_bounded: true)
+        cmd = ["rg", "-F", "-f", pattern_file, "--no-filename", "-o"]
+        cmd << "-w" if word_bounded
         @exclude_paths.each { |ep| cmd += ["--glob", "!#{glob_pattern(ep)}"] }
         cmd << @project_root
         cmd
