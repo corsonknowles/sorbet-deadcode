@@ -63,6 +63,10 @@ OptionParser.new do |opts|
     options[:no_routes] = true
   end
 
+  opts.on("--no-erb", "Disable ERB template scanning for method/constant references.") do
+    options[:no_erb] = true
+  end
+
   opts.on("--index OUTPUT_FILE",
     "Run analysis and save the full dead-code index to a JSON file for later use.",
     "Combine with --report to load-and-filter instead of re-analyzing.") do |f|
@@ -165,6 +169,10 @@ else
 
   unless options[:no_routes]
     candidates = SorbetDeadcode::Refiners::RouteRefiner.new(options[:project_root]).refine(candidates)
+  end
+
+  unless options[:no_erb]
+    candidates = SorbetDeadcode::Refiners::ErbRefiner.new(options[:project_root]).refine(candidates)
   end
 
   candidates

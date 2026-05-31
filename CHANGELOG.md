@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added
+- **ERB template reference scanner** (#25, part of #4) — a second-pass refiner that extracts
+  the Ruby out of `<% %>` / `<%= %>` tags (skipping `<%# %>` comments and `<%% %>` literals),
+  joins it preserving block structure, and runs it through the existing Prism `ReferenceCollector`.
+  Methods and constants used only from templates are kept alive. No new dependency (no Erubi):
+  the snippet-join approach reuses the type-aware collector and sidesteps raw ERB/Prism parse
+  warnings. Template receivers are untyped, so method matching is name-only. File discovery uses
+  the shared `git ls-files`-based finder (sub-second across thousands of templates). CLI applies
+  it by default (opt out with `--no-erb`).
+
 ### Removed
 - **Dropped Ruby 3.3 support early** — minimum required Ruby is now 3.4. The reason is
   narrow and deliberate: the `--report`/`--index` path uses `Time#iso8601`, which needs

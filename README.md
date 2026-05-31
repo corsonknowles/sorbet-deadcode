@@ -129,6 +129,7 @@ would otherwise produce false positives:
 | `accepts_nested_attributes_for` | `accepts_nested_attributes_for :items` | Keeps `items_attributes=` overrides alive |
 | `Prism::Visitor` subclasses | `class MyVisitor < Prism::Visitor` | Keeps all `visit_*` methods alive |
 | Mailer previews | `class FooMailerPreview` | Keeps the class and all preview actions alive |
+| ERB templates | `<%= widget.display_name %>` | Keeps template-referenced methods/constants alive (`--no-erb` to disable) |
 | Always-alive methods | `initialize`, `respond_to_missing?`, etc. | Never reported dead |
 
 ## How It Works
