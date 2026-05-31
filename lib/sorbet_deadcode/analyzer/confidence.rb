@@ -32,6 +32,12 @@ module SorbetDeadcode
       def self.method_confidence(definition, ref_index)
         return LOW unless definition.owner_name
 
+        # A method whose owning namespace contains an unresolvable
+        # variable-target dynamic dispatch could be reached at runtime. When such a
+        # method is reported (`dynamic_dispatch: :report` mode), downgrade to :low.
+        dynamic_ns = ref_index[:dynamic_namespaces]
+        return LOW if dynamic_ns && dynamic_ns.include?(definition.owner_name)
+
         # If there were typed references for this name (matching other owners),
         # we can be confident this specific owner's method is unreachable.
         if ref_index[:typed_by_name].key?(definition.name)
