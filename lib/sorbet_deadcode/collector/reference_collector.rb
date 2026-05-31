@@ -115,9 +115,9 @@ module SorbetDeadcode
         name = node.name.to_s
         location = format_location(node.location)
 
-        # Issue #21: RSpec dynamic predicate matchers (be_foo, be_a_foo, have_foo)
-        # call foo?/has_foo? without the literal name appearing. Emit those
-        # predicate references so matcher-only-tested methods aren't reported dead.
+        # RSpec dynamic predicate matchers (be_foo, be_a_foo, have_foo) call
+        # foo?/has_foo? without the literal name appearing. Emit those predicate
+        # references so methods tested only through a matcher aren't reported dead.
         collect_predicate_matcher_references(name, location)
 
         if DYNAMIC_DISPATCH_METHODS.include?(name) && node.arguments
@@ -241,7 +241,7 @@ module SorbetDeadcode
       #   be_a_foo / be_an_foo => foo?   (a_/an_ article stripped)
       #   have_foo          => has_foo?  (and have_foo? as a fallback shape)
       # Over-emitting references here is safe: it can only keep a method alive, never
-      # mark one dead. (Issue #21.)
+      # mark one dead.
       def collect_predicate_matcher_references(name, location)
         predicate_matcher_names(name).each do |predicate|
           @references << Reference.new(name: predicate, location: location, kind: :method)
