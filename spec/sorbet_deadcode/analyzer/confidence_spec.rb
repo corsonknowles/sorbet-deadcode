@@ -41,6 +41,18 @@ module SorbetDeadcode
         assert_equal Confidence::MEDIUM, Confidence.for(make_def(kind: :method), idx)
       end
 
+      def test_method_in_dynamic_namespace_is_low
+        idx = ref_index
+        idx[:dynamic_namespaces] = Set.new(["Foo"])
+        assert_equal Confidence::LOW, Confidence.for(make_def(kind: :method, owner_name: "Foo"), idx)
+      end
+
+      def test_method_not_in_dynamic_namespace_unaffected
+        idx = ref_index
+        idx[:dynamic_namespaces] = Set.new(["Other"])
+        assert_equal Confidence::HIGH, Confidence.for(make_def(kind: :method, owner_name: "Foo"), idx)
+      end
+
       def test_method_without_owner_is_low
         defn = Definition.new(name: "orphan", full_name: "orphan", kind: :method, location: "f:1")
         assert_equal Confidence::LOW, Confidence.for(defn, ref_index)

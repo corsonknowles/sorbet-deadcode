@@ -112,6 +112,37 @@ module SorbetDeadcode
         assert_includes constant_names, "Outer::Middle::Inner"
       end
 
+      # Issue #21: RSpec predicate matchers
+      def test_be_matcher_emits_predicate_reference
+        refs = collect(<<~RUBY)
+          expect(record.type).to be_task_run_execution
+        RUBY
+
+        assert_includes refs.select { |r| r.kind == :method }.map(&:name), "task_run_execution?"
+      end
+
+      def test_be_a_matcher_strips_article
+        refs = collect("expect(x).to be_a_user")
+        assert_includes refs.select { |r| r.kind == :method }.map(&:name), "user?"
+      end
+
+      def test_be_an_matcher_strips_article
+        refs = collect("expect(x).to be_an_admin")
+        assert_includes refs.select { |r| r.kind == :method }.map(&:name), "admin?"
+      end
+
+      def test_have_matcher_emits_has_predicate
+        refs = collect("expect(x).to have_key(:a)")
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "has_key?"
+        assert_includes names, "have_key?"
+      end
+
+      def test_non_matcher_call_emits_no_predicate_reference
+        refs = collect("foo.bar")
+        refute refs.any? { |r| r.kind == :method && r.name == "bar?" }
+      end
+
       def test_delegate_emits_method_reference
         refs = collect(<<~RUBY)
           class Foo
@@ -533,6 +564,158 @@ module SorbetDeadcode
 
         prefix = refs.find { |r| r.kind == :method_prefix }
         assert_equal "build_", prefix.name
+      end
+
+      # Local var assigned an interpolated string with a prefix
+      def test_local_var_interpolation_prefix_emits_method_prefix
+        refs = collect(<<~'RUBY')
+          class Serializer
+            def render(type)
+              name = "dump_#{type}"
+              __send__(name)
+            end
+          end
+        RUBY
+
+        prefix = refs.find { |r| r.kind == :method_prefix }
+        assert_equal "dump_", prefix&.name
+        refute refs.any? { |r| r.kind == :dynamic_namespace }
+      end
+
+      # Inline literal symbol array iterated and dispatched
+      def test_inline_symbol_array_iteration_emits_method_refs
+        refs = collect(<<~RUBY)
+          class Runner
+            def run
+              [:start, :stop].each { |m| send(m) }
+            end
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "start"
+        assert_includes names, "stop"
+        refute refs.any? { |r| r.kind == :dynamic_namespace }
+      end
+
+      # Symbol array via a constant, then iterated
+      def test_constant_symbol_array_iteration_emits_method_refs
+        refs = collect(<<~RUBY)
+          class Runner
+            CALLBACKS = [:before, :after].freeze
+            def run
+              CALLBACKS.each { |m| public_send(m) }
+            end
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "before"
+        assert_includes names, "after"
+      end
+
+      def test_iteration_over_non_symbol_array_falls_back
+        refs = collect(<<~RUBY)
+          class Runner
+            def run(items)
+              items.each { |m| send(m) }
+            end
+          end
+        RUBY
+
+        # items is not a literal symbol array → conservative namespace fallback
+        assert refs.any? { |r| r.kind == :dynamic_namespace }
+      end
+
+      def test_iteration_with_block_pass_falls_through
+        refs = collect(<<~RUBY)
+          class Runner
+            def run
+              [:a, :b].each(&handler)
+            end
+          end
+        RUBY
+
+        # &handler is a block-pass, not a literal block → no binding, no crash
+        assert_kind_of Array, refs
+      end
+
+      def test_iteration_with_destructuring_param_falls_through
+        refs = collect(<<~RUBY)
+          class Runner
+            def run
+              [[:a, 1], [:b, 2]].each { |(name, val)| send(name) }
+            end
+          end
+        RUBY
+
+        # Destructured param is not a simple required param → conservative handling
+        assert_kind_of Array, refs
+      end
+
+      def test_iteration_block_without_params_falls_through
+        refs = collect(<<~RUBY)
+          class Runner
+            def run
+              [:a, :b].each { do_thing }
+            end
+          end
+        RUBY
+
+        assert_kind_of Array, refs
+      end
+
+      def test_empty_symbol_array_constant_not_tracked
+        refs = collect(<<~RUBY)
+          class Runner
+            EMPTY = [].freeze
+            def run
+              EMPTY.each { |m| send(m) }
+            end
+          end
+        RUBY
+
+        # Empty array → not a resolvable symbol array → conservative fallback
+        assert refs.any? { |r| r.kind == :dynamic_namespace }
+      end
+
+      def test_mixed_array_not_treated_as_symbol_array
+        refs = collect(<<~RUBY)
+          class Runner
+            def run
+              [:a, "b"].each { |m| send(m) }
+            end
+          end
+        RUBY
+
+        refute refs.any? { |r| r.kind == :method && r.name == "a" }
+        assert refs.any? { |r| r.kind == :dynamic_namespace }
+      end
+
+      def test_local_var_non_interpolated_assignment_not_tracked_as_prefix
+        refs = collect(<<~RUBY)
+          class Runner
+            def run
+              name = "literal_string"
+              send(name)
+            end
+          end
+        RUBY
+
+        refute refs.any? { |r| r.kind == :method_prefix }
+        assert refs.any? { |r| r.kind == :dynamic_namespace }
+      end
+
+      def test_iteration_without_block_param_falls_through
+        refs = collect(<<~RUBY)
+          class Runner
+            def run
+              [:a, :b].each
+            end
+          end
+        RUBY
+
+        assert_kind_of Array, refs
       end
 
       def test_variable_dispatch_inside_namespace_marks_namespace

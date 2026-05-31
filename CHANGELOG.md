@@ -10,6 +10,22 @@
   - actions: `:keep` (real production caller), `:delete_with_spec` (spec-only refs),
     `:review` (non-Ruby ref / inline constant), `:safe_delete` (no references at all)
   - `--classify` prints the annotation per candidate; `--only ACTION` filters to one action.
+- **Dynamic dispatch refinements** (closes #10) — narrows the conservative
+  "exclude the whole namespace" behavior for variable-target `send`/`__send__`/`public_send`:
+  - Interpolation prefix via local variable: `m = "dump_#{x}"; send(m)` emits a `dump_`
+    method-prefix reference instead of excluding the namespace.
+  - Finite symbol-list iteration: `[:a, :b].each { |m| send(m) }` and `METHODS.each { |m| send(m) }`
+    (where `METHODS = [:a, :b].freeze`) resolve to the exact method names.
+  - `dynamic_dispatch: :report` mode (opt-in): report otherwise-excluded namespace methods
+    as `:low` confidence for review instead of keeping them alive. Default stays `:exclude`.
+  - Validated that an LSP cross-check cannot replace the conservative exclusion: Sorbet's
+    `textDocument/references` is static and cannot resolve `__send__(variable)` / interpolated
+    dispatch, so deferring to it would reintroduce the `MemberSerializer#dump_*` false positive.
+- **RSpec predicate matcher references** (closes #21) — `be_foo` / `be_a_foo` /
+  `be_an_foo` now reference `foo?`, and `have_foo` references `has_foo?` / `have_foo?`.
+  Predicate methods exercised only through a matcher (where the literal name never
+  appears) are no longer reported dead. Discovered when `Cowork::InboundEvent::Type#task_run_execution?`
+  was wrongly flagged dead because its only use was `be_task_run_execution` in a spec.
 
 ### Changed
 - **`--verify` is now the default** — ripgrep verification runs automatically after every

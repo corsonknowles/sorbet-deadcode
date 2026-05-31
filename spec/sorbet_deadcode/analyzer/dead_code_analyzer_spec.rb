@@ -224,6 +224,65 @@ module SorbetDeadcode
         assert_includes dead_names, "truly_dead"
       end
 
+      # :report mode reports namespace-dispatched methods as dead
+      # (downgraded to :low confidence) instead of excluding them.
+      def test_report_mode_reports_variable_dispatched_methods
+        source = <<~RUBY
+          class MemberSerializer
+            def dump_company_member
+            end
+
+            def dump(member)
+              method_name = some_lookup(member)
+              __send__(method_name, member)
+            end
+          end
+        RUBY
+
+        dir = Dir.mktmpdir
+        File.write("#{dir}/s.rb", source)
+
+        exclude_mode = DeadCodeAnalyzer.new(paths: [dir], dynamic_dispatch: :exclude)
+        exclude_mode.run
+        refute_includes exclude_mode.dead_definitions.map(&:name), "dump_company_member"
+
+        report_mode = DeadCodeAnalyzer.new(paths: [dir], dynamic_dispatch: :report)
+        report_mode.run
+        # In :report mode the method surfaces as a (low-confidence) candidate.
+        assert_includes report_mode.dead_definitions.map(&:name), "dump_company_member"
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      # VALIDATION: the LSP cross-check cannot rescue this case.
+      # Sorbet's textDocument/references is static and also cannot resolve
+      # __send__(variable), so an LSP pass over a :report-mode candidate would find
+      # zero references and confirm it dead — a false positive. This test documents
+      # why the conservative :exclude default is retained even in hybrid/LSP mode.
+      def test_report_mode_candidate_has_no_static_references
+        source = <<~RUBY
+          class MemberSerializer
+            def dump_company_member
+            end
+
+            def dump(member)
+              __send__("dump_\#{member.class.name}", member)
+            end
+          end
+        RUBY
+
+        dir = Dir.mktmpdir
+        File.write("#{dir}/s.rb", source)
+        analyzer = DeadCodeAnalyzer.new(paths: [dir], dynamic_dispatch: :report)
+        analyzer.run
+
+        # The interpolated prefix "dump_" still rescues it via fix-1/prefix logic,
+        # so it should NOT be dead even in report mode — prefix resolution wins.
+        refute_includes analyzer.dead_definitions.map(&:name), "dump_company_member"
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
       def test_dynamic_dispatch_on_variable_protects_namespace
         # __send__(method_name) where method_name is a local variable: we can't
         # know the target, so every method in the class is kept alive.
@@ -296,6 +355,29 @@ module SorbetDeadcode
         dead_names = analyzer.dead_definitions.map(&:name)
         refute_includes dead_names, "UsedModule"
         assert_includes dead_names, "DeadModule"
+      end
+
+      def test_predicate_used_only_via_be_matcher_is_alive_when_specs_included
+        dir = Dir.mktmpdir
+        File.write(File.join(dir, "status.rb"), <<~RUBY)
+          class Status
+            def active?
+              @state == :active
+            end
+          end
+        RUBY
+        File.write(File.join(dir, "status_spec.rb"), <<~RUBY)
+          RSpec.describe Status do
+            it { expect(subject).to be_active }
+          end
+        RUBY
+
+        analyzer = DeadCodeAnalyzer.new(paths: [dir])
+        analyzer.run
+        # `be_active` in the spec references `active?` — not dead.
+        refute_includes analyzer.dead_definitions.map(&:name), "active?"
+      ensure
+        FileUtils.remove_entry(dir) if dir
       end
 
       def test_respond_to_missing_is_never_dead

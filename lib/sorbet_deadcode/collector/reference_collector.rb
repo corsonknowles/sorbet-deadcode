@@ -54,6 +54,12 @@ module SorbetDeadcode
         @local_types = {}
         @definition_locations = Set.new
         @current_method_name = nil
+        # Local var name => interpolation prefix, e.g. `m = "dump_#{x}"` records "dump_".
+        @local_prefixes = {}
+        # Constant name => [symbol names] for literal symbol arrays, e.g. METHODS = %i[a b].
+        @symbol_array_constants = {}
+        # Block-param name => [symbol names] in scope while visiting an iteration block.
+        @iterated_symbols = {}
       end
 
       def visit_class_node(node)
@@ -111,9 +117,26 @@ module SorbetDeadcode
         @current_method_name = old_method
       end
 
+      ITERATION_METHODS = %w[each map flat_map collect each_with_object select filter reject find detect].to_set.freeze
+
       def visit_call_node(node)
         name = node.name.to_s
         location = format_location(node.location)
+
+        # RSpec dynamic predicate matchers (be_foo, be_a_foo, have_foo) call
+        # foo?/has_foo? without the literal name appearing. Emit those predicate
+        # references so methods tested only through a matcher aren't reported dead.
+        collect_predicate_matcher_references(name, location)
+
+        # Resolve dispatch over a finite symbol list, e.g. `[:a, :b].each { |m| send(m) }`
+        # or `METHODS.each { |m| send(m) }`. Bind the block param to the resolved symbol
+        # list while visiting the block so the send(m) inside emits concrete references.
+        if ITERATION_METHODS.include?(name) && (param = iteration_block_param(node)) && (syms = resolve_symbol_array(node.receiver))
+          @iterated_symbols[param] = syms
+          super
+          @iterated_symbols.delete(param)
+          return
+        end
 
         if DYNAMIC_DISPATCH_METHODS.include?(name) && node.arguments
           collect_dynamic_dispatch(node, location)
@@ -199,6 +222,22 @@ module SorbetDeadcode
           )
           @local_types[node.name.to_s] = type if type
         end
+
+        # Track `m = "dump_#{x}"` so a later send(m) can emit a precise method_prefix
+        # reference (keeping `dump_*` methods alive) instead of excluding the whole namespace.
+        prefix = literal_prefix(node.value)
+        if prefix && !prefix.empty?
+          @local_prefixes[node.name.to_s] = prefix
+        end
+
+        super
+      end
+
+      # Track `METHODS = [:a, :b]` so iteration over the constant can resolve the
+      # dispatched method names to concrete references.
+      def visit_constant_write_node(node)
+        syms = symbol_array_values(node.value)
+        @symbol_array_constants[node.name.to_s] = syms if syms
         super
       end
 
@@ -219,15 +258,96 @@ module SorbetDeadcode
           return
         end
 
+        # Variable bound to a finite symbol list via iteration,
+        # e.g. `[:a, :b].each { |m| send(m) }` => emit each concrete method name.
+        if first_arg.is_a?(Prism::LocalVariableReadNode) && @iterated_symbols.key?(first_arg.name.to_s)
+          receiver_type = node.receiver ? resolve_receiver_type(node.receiver) : nil
+          @iterated_symbols[first_arg.name.to_s].each do |sym|
+            @references << Reference.new(name: sym, location: location, kind: :method, receiver_type: receiver_type)
+          end
+          return
+        end
+
+        # Variable assigned an interpolated string with a literal prefix,
+        # e.g. `m = "dump_#{x}"; send(m)` => emit the `dump_` prefix.
+        if first_arg.is_a?(Prism::LocalVariableReadNode) && @local_prefixes.key?(first_arg.name.to_s)
+          @references << Reference.new(name: @local_prefixes[first_arg.name.to_s], location: location, kind: :method_prefix)
+          return
+        end
+
         # Non-literal target: the method name is built at runtime.
         prefix = literal_prefix(first_arg)
         if prefix && !prefix.empty?
           # e.g. public_send("dump_#{type}") => any `dump_*` method may be reached.
           @references << Reference.new(name: prefix, location: location, kind: :method_prefix)
         elsif current_namespace
-          # e.g. __send__(method_name) inside a class => any method in this
-          # namespace may be reached; exclude them from dead results.
+          # e.g. __send__(method_name) inside a class => the runtime target is
+          # unknowable, so any method in this namespace may be reached. Conservatively
+          # exclude them all from dead results (the precise cases above are handled
+          # before reaching this fallback).
           @references << Reference.new(name: current_namespace, location: location, kind: :dynamic_namespace)
+        end
+      end
+
+      # Returns the first block parameter name of an iteration call, or nil.
+      def iteration_block_param(node)
+        block = node.block
+        return nil unless block.is_a?(Prism::BlockNode)
+
+        params = block.parameters
+        return nil unless params.is_a?(Prism::BlockParametersNode)
+
+        required = params.parameters&.requireds
+        first = required&.first
+        first.is_a?(Prism::RequiredParameterNode) ? first.name.to_s : nil
+      end
+
+      # Resolve a node to an array of symbol names if it is a literal symbol array
+      # or a constant pointing to one. Returns nil otherwise.
+      def resolve_symbol_array(node)
+        case node
+        when Prism::ArrayNode
+          symbol_array_values(node)
+        when Prism::ConstantReadNode
+          @symbol_array_constants[node.name.to_s]
+        end
+      end
+
+      # Returns the unescaped symbol names if node is an ArrayNode of only symbols
+      # (optionally frozen via .freeze), else nil.
+      def symbol_array_values(node)
+        node = node.receiver if node.is_a?(Prism::CallNode) && node.name.to_s == "freeze" && node.receiver
+        return nil unless node.is_a?(Prism::ArrayNode)
+        return nil if node.elements.empty?
+        return nil unless node.elements.all? { |el| el.is_a?(Prism::SymbolNode) }
+
+        node.elements.map(&:unescaped)
+      end
+
+      # RSpec dynamic predicate matchers reference predicate methods implicitly:
+      #   be_foo            => foo?
+      #   be_a_foo / be_an_foo => foo?   (a_/an_ article stripped)
+      #   have_foo          => has_foo?  (and have_foo? as a fallback shape)
+      # Over-emitting references here is safe: it can only keep a method alive, never
+      # mark one dead.
+      def collect_predicate_matcher_references(name, location)
+        predicate_matcher_names(name).each do |predicate|
+          @references << Reference.new(name: predicate, location: location, kind: :method)
+        end
+      end
+
+      def predicate_matcher_names(name)
+        if name.start_with?("be_an_")
+          ["#{name.delete_prefix('be_an_')}?"]
+        elsif name.start_with?("be_a_")
+          ["#{name.delete_prefix('be_a_')}?"]
+        elsif name.start_with?("be_")
+          ["#{name.delete_prefix('be_')}?"]
+        elsif name.start_with?("have_")
+          base = name.delete_prefix("have_")
+          ["has_#{base}?", "have_#{base}?"]
+        else
+          []
         end
       end
 
