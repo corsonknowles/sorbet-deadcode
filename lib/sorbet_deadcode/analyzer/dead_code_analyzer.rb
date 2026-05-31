@@ -16,14 +16,15 @@ module SorbetDeadcode
 
       attr_reader :definitions, :references, :type_resolver
 
-      # reference_paths: additional paths to scan for *references only* (no definitions
-      # are collected from them). Use this to include exe/, spec/, or any other directory
-      # that calls into the definitions under @paths — so public API methods are not
-      # falsely reported as dead just because callers live outside the definition scope.
-      def initialize(paths:, exclude_paths: [], reference_paths: nil)
+      # reference_paths: additional paths to scan for *references only*.
+      # route_root: project root to auto-detect config/routes.rb from. When set (or
+      # when the analyzed paths contain a config/routes.rb), controller actions are
+      # extracted from route files and added to the reference index.
+      def initialize(paths:, exclude_paths: [], reference_paths: nil, route_root: nil)
         @paths = Array(paths)
         @exclude_paths = Array(exclude_paths)
         @reference_paths = reference_paths ? Array(reference_paths) : []
+        @route_root = route_root
         @definitions = []
         @references = []
         @type_resolver = Resolver::TypeResolver.new
@@ -38,6 +39,9 @@ module SorbetDeadcode
           ref_only_files = collect_reference_only_files(def_files)
           ref_only_files.each { |file| index_file_references_only(file) }
         end
+
+        # Scan route files for controller action references.
+        scan_routes
 
         # Pre-compute which class/module full_names appear in multiple files.
         # A module reopened in 2+ files is a shared namespace — always alive.
@@ -80,6 +84,38 @@ module SorbetDeadcode
         }.reject { |f|
           def_set.include?(File.expand_path(f))
         }.sort
+      end
+
+      def scan_routes
+        root = infer_route_root
+        return unless root
+
+        scanner = Scanners::RouteScanner.new(root)
+        @references.concat(scanner.references)
+      end
+
+      # Infer the project root for route scanning:
+      # 1. Explicit @route_root if set.
+      # 2. Closest ancestor of any analyzed path that contains config/routes.rb.
+      # 3. Reference root if any.
+      def infer_route_root
+        return File.expand_path(@route_root) if @route_root
+
+        candidates = [@paths, @reference_paths].flatten.map { |p| File.expand_path(p) }
+        candidates.each do |path|
+          check = File.file?(path) ? File.dirname(path) : path
+          # Walk up looking for config/routes.rb
+          dir = check
+          10.times do
+            return dir if File.exist?(File.join(dir, "config", "routes.rb"))
+
+            parent = File.dirname(dir)
+            break if parent == dir
+
+            dir = parent
+          end
+        end
+        nil
       end
 
       def index_file_references_only(file)

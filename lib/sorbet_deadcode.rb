@@ -11,6 +11,7 @@ require_relative "sorbet_deadcode/resolver/type_resolver"
 require_relative "sorbet_deadcode/analyzer/dead_code_analyzer"
 require_relative "sorbet_deadcode/analyzer/confidence"
 require_relative "sorbet_deadcode/index"
+require_relative "sorbet_deadcode/scanners/route_scanner"
 require_relative "sorbet_deadcode/lsp/client"
 require_relative "sorbet_deadcode/lsp/dead_code_finder"
 require_relative "sorbet_deadcode/lsp/hybrid_finder"
@@ -21,11 +22,12 @@ module SorbetDeadcode
   class Error < StandardError; end
 
   class << self
-    def analyze(paths, exclude_paths: [], reference_paths: nil)
+    def analyze(paths, exclude_paths: [], reference_paths: nil, route_root: nil)
       analyzer = Analyzer::DeadCodeAnalyzer.new(
         paths: paths,
         exclude_paths: exclude_paths,
         reference_paths: reference_paths,
+        route_root: route_root,
       )
       analyzer.run
     end

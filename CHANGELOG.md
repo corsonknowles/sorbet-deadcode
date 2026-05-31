@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (feat/remaining-issues)
+## Unreleased
 
 ### Added
 - **Framework DSL plugins** (closes #3) — `delegate`, AASM events, and GraphQL mutations

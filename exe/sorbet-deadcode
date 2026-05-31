@@ -57,6 +57,10 @@ OptionParser.new do |opts|
     options[:project_root] = dir
   end
 
+  opts.on("--no-routes", "Disable automatic config/routes.rb scanning for controller action references.") do
+    options[:no_routes] = true
+  end
+
   opts.on("--index OUTPUT_FILE",
     "Run analysis and save the full dead-code index to a JSON file for later use.",
     "Combine with --report to load-and-filter instead of re-analyzing.") do |f|
@@ -153,6 +157,7 @@ else
     options[:paths],
     exclude_paths: options[:exclude_paths],
     reference_paths: options[:reference_root],
+    route_root: options[:no_routes] ? nil : options[:project_root],
   )
 end
 
