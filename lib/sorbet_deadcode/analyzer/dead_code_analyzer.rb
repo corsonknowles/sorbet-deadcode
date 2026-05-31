@@ -139,7 +139,12 @@ module SorbetDeadcode
           # A module/class opened in multiple files is a shared namespace; always live.
           (@multi_file_namespaces || Set.new).include?(definition.full_name) ||
             ref_index[:constants].include?(definition.name) ||
-            ref_index[:constants].include?(definition.full_name)
+            ref_index[:constants].include?(definition.full_name) ||
+            # A class/module explicitly marked as dynamic_namespace (e.g. MailerPreview)
+            # is alive — its class definition should not be reported dead any more than
+            # its methods would be.
+            ref_index[:dynamic_namespaces].include?(definition.name) ||
+            ref_index[:dynamic_namespaces].include?(definition.full_name)
         when :constant
           ref_index[:constants].include?(definition.name) ||
             ref_index[:constants].include?(definition.full_name) ||
