@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+- **RSpec predicate matcher references** (closes #21) — `be_foo` / `be_a_foo` /
+  `be_an_foo` now reference `foo?`, and `have_foo` references `has_foo?` / `have_foo?`.
+  Predicate methods exercised only through a matcher (where the literal name never
+  appears) are no longer reported dead. Discovered when `Cowork::InboundEvent::Type#task_run_execution?`
+  was wrongly flagged dead because its only use was `be_task_run_execution` in a spec.
+
 ### Changed
 - **`--verify` is now the default** — ripgrep verification runs automatically after every
   analysis pass. Use `--no-verify` to opt out. This eliminates the bulk of name-collision
