@@ -474,6 +474,31 @@ module SorbetDeadcode
         refute refs.any? { |r| r.kind == :dynamic_namespace }
       end
 
+      def test_bare_preview_name_outside_mailer_path_is_not_dynamic
+        # A class merely ending in "Preview" (no superclass, not *MailerPreview, not
+        # in a mailer_previews path) must NOT be treated as a mailer preview — otherwise
+        # we'd hide dead methods in arbitrary service classes.
+        refs = collect_at_path("app/services/data_preview.rb", <<~RUBY)
+          class DataPreview
+            def render
+            end
+          end
+        RUBY
+
+        refute refs.any? { |r| r.kind == :dynamic_namespace }
+      end
+
+      def test_bare_preview_name_inside_mailer_path_is_dynamic
+        refs = collect_at_path("app/mailer_previews/report_preview.rb", <<~RUBY)
+          class ReportPreview
+            def monthly_report
+            end
+          end
+        RUBY
+
+        assert refs.any? { |r| r.kind == :dynamic_namespace }
+      end
+
       def test_visitor_subclass_emits_visit_prefix_reference
         refs = collect(<<~RUBY)
           class MyVisitor < Prism::Visitor
@@ -855,8 +880,12 @@ module SorbetDeadcode
       private
 
       def collect(source, type_resolver: nil)
+        collect_at_path("test.rb", source, type_resolver: type_resolver)
+      end
+
+      def collect_at_path(file_path, source, type_resolver: nil)
         result = Prism.parse(source)
-        collector = ReferenceCollector.new("test.rb", type_resolver: type_resolver)
+        collector = ReferenceCollector.new(file_path, type_resolver: type_resolver)
         collector.visit(result.value)
         collector.references
       end

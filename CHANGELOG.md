@@ -2,7 +2,21 @@
 
 ## Unreleased
 
+### Removed
+- **Dropped Ruby 3.3 support early** — minimum required Ruby is now 3.4. The reason is
+  narrow and deliberate: the `--report`/`--index` path uses `Time#iso8601`, which needs
+  `require "time"`. On Ruby 3.4+ `time` is already loaded in our runtime, but on 3.3 it is
+  not, so a minimal `exe/` invocation raised `NoMethodError: undefined method 'iso8601'`.
+  Rather than carry a defensive `require "time"` for one version, we dropped 3.3 from the
+  supported set and the CI matrix (now 3.4 and 4.0). **Users who still need Ruby 3.3 can
+  add `require "time"` themselves** (e.g. in their app boot) and the tool will work.
+
 ### Fixed
+- **Mailer-preview detection too broad** (#32) — any class whose name merely ended in
+  `Preview` (e.g. a `DataPreview` service) had all its methods marked alive, hiding genuinely
+  dead code. Detection is now conservative: a class qualifies only if it inherits from a
+  `*Preview` base, is named `*MailerPreview`, or is named `*Preview` and lives in a
+  `mailer_previews` path (Rails convention).
 - **ReferenceCollector method-local state leak** (#28) — interpolation-prefix and
   write-based type tracking were file-scoped, so `m = "dump_#{x}"` in one method
   leaked a `dump_` prefix into another method reusing the name `m`. These maps are
@@ -14,6 +28,9 @@
   could only be printed plainly. The report path now flows through the shared pipeline
   (skipping analysis, verification, and re-indexing), completing the index → classify
   workflow.
+- **Dropped the `sorbet-runtime` runtime dependency** (#34) — the tool parses Sorbet
+  `sig` annotations as source text via Prism and never calls the sorbet-runtime API, so
+  the dependency was dead weight on installs. `prism` is now the only runtime dependency.
 - **Graceful degradation when ripgrep is missing** (#29) — now that `--verify` is the
   default, a missing `rg` no longer crashes: the verifier returns candidates unverified
   and the classifier marks them `:review` / `:ripgrep_unavailable`, each with a clear

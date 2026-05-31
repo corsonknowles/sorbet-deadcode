@@ -17,7 +17,7 @@ Gem::Specification.new do |spec|
   DESC
   spec.homepage = "https://github.com/corsonknowles/sorbet-deadcode"
   spec.license = "MIT"
-  spec.required_ruby_version = ">= 3.3.0"
+  spec.required_ruby_version = ">= 3.4.0"
 
   spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = spec.homepage
@@ -28,6 +28,7 @@ Gem::Specification.new do |spec|
   spec.executables = ["sorbet-deadcode"]
   spec.require_paths = ["lib"]
 
+  # sorbet-deadcode parses Sorbet `sig` annotations as source text via Prism; it does
+  # not invoke the sorbet-runtime API, so it carries no runtime Sorbet dependency.
   spec.add_dependency "prism", ">= 0.28.0"
-  spec.add_dependency "sorbet-runtime", ">= 0.5.0"
 end
