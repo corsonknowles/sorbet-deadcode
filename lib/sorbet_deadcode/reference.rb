@@ -4,10 +4,12 @@ module SorbetDeadcode
   class Reference
     # method_prefix: dynamic dispatch on an interpolated name with a known literal
     #   prefix, e.g. public_send("dump_#{x}") => prefix "dump_".
+    # method_suffix: dynamic dispatch on an interpolated name with a known literal
+    #   suffix, e.g. public_send("#{x}_start_time") => suffix "_start_time".
     # dynamic_namespace: dynamic dispatch on a non-literal target (variable/call) inside
     #   a namespace, e.g. __send__(method_name) inside MemberSerializer => the whole
     #   namespace's methods may be reached.
-    KINDS = %i[method constant method_prefix dynamic_namespace].freeze
+    KINDS = %i[method constant method_prefix method_suffix dynamic_namespace].freeze
 
     attr_reader :name, :location, :kind, :receiver_type
 

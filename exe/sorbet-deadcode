@@ -260,7 +260,7 @@ ref_index = if options[:show_confidence]
   require "sorbet_deadcode/analyzer/dead_code_analyzer"
   # Approximate from the existing results — build a minimal ref_index
   { typed_by_name: {}, untyped_methods: Set.new, constants: Set.new,
-    method_prefixes: Set.new, dynamic_namespaces: Set.new }
+    method_prefixes: Set.new, method_suffixes: Set.new, dynamic_namespaces: Set.new }
 end
 
 results.sort_by(&:full_name).each do |defn|

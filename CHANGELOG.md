@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+- **Suffix-interpolation dynamic dispatch** (#49) — methods reached via `public_send("#{x}_start_time")`
+  (a dynamic prefix with a literal suffix) were reported dead because the assembled name never
+  appears literally. The collector now emits a `:method_suffix` reference (mirroring `:method_prefix`),
+  and any definition whose name ends with a dispatched suffix is kept alive. Combined
+  prefix+suffix interpolation (`"a_#{x}_b"`) emits both. Local-variable-held interpolations
+  (`m = "#{x}_at"; send(m)`) are tracked per-method without leaking across method bodies.
+
 ### Added
 - **RABL template reference scanner** (#26, part of #4) — a second-pass refiner for `.rabl`
   view templates. Each `.rabl` is Ruby, so it is parsed once and walked twice: the existing
