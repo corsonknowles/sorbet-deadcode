@@ -9,6 +9,9 @@
   now snapshot/restored around each method body, matching local-variable scoping.
 
 ### Changed
+- **Dropped the `sorbet-runtime` runtime dependency** (#34) — the tool parses Sorbet
+  `sig` annotations as source text via Prism and never calls the sorbet-runtime API, so
+  the dependency was dead weight on installs. `prism` is now the only runtime dependency.
 - **Graceful degradation when ripgrep is missing** (#29) — now that `--verify` is the
   default, a missing `rg` no longer crashes: the verifier returns candidates unverified
   and the classifier marks them `:review` / `:ripgrep_unavailable`, each with a clear
