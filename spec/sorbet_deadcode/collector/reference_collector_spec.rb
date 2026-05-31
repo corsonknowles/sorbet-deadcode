@@ -112,6 +112,221 @@ module SorbetDeadcode
         assert_includes constant_names, "Outer::Middle::Inner"
       end
 
+      def test_delegate_emits_method_reference
+        refs = collect(<<~RUBY)
+          class Foo
+            delegate :bar, :baz, to: :target
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "bar"
+        assert_includes names, "baz"
+      end
+
+      def test_delegate_with_string_prefix_emits_prefixed_name
+        refs = collect(<<~RUBY)
+          class Foo
+            delegate :name, to: :profile, prefix: :user
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "user_name"
+      end
+
+      def test_delegate_with_true_prefix_emits_method_prefix
+        refs = collect(<<~RUBY)
+          class Foo
+            delegate :name, to: :profile, prefix: true
+          end
+        RUBY
+
+        prefix = refs.find { |r| r.kind == :method_prefix }
+        assert prefix
+      end
+
+      def test_aasm_event_after_callback_emits_references
+        refs = collect(<<~RUBY)
+          class Order
+            event :activate, after: [:notify_user, :log_event]
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "notify_user"
+        assert_includes names, "log_event"
+      end
+
+      def test_aasm_event_guard_emits_reference
+        refs = collect(<<~RUBY)
+          class Order
+            event :activate, guard: :can_activate?
+          end
+        RUBY
+
+        assert_includes refs.select { |r| r.kind == :method }.map(&:name), "can_activate?"
+      end
+
+      def test_aasm_error_on_all_events_emits_reference
+        refs = collect(<<~RUBY)
+          class Order
+            error_on_all_events :handle_aasm_error
+          end
+        RUBY
+
+        assert_includes refs.select { |r| r.kind == :method }.map(&:name), "handle_aasm_error"
+      end
+
+      def test_graphql_builds_emits_build_method
+        refs = collect(<<~RUBY)
+          class CreateOrder < BaseMutation
+            builds :order
+          end
+        RUBY
+
+        assert_includes refs.select { |r| r.kind == :method }.map(&:name), "build_order"
+      end
+
+      def test_graphql_argument_prepare_emits_reference
+        refs = collect(<<~RUBY)
+          class CreateOrder < BaseMutation
+            argument :assignee_id, ID, prepare: :load_assignee
+          end
+        RUBY
+
+        assert_includes refs.select { |r| r.kind == :method }.map(&:name), "load_assignee"
+      end
+
+      def test_delegate_with_hash_splat_does_not_crash
+        refs = collect(<<~RUBY)
+          opts = { to: :target }
+          delegate :name, **opts
+        RUBY
+
+        assert_kind_of Array, refs
+      end
+
+      def test_aasm_with_non_symbol_non_hash_arg_is_skipped
+        # Integer or string literal as first arg → no crash, no method ref
+        refs = collect(<<~RUBY)
+          class Order
+            event :activate, "extra_string_arg"
+          end
+        RUBY
+
+        assert_kind_of Array, refs
+      end
+
+      def test_graphql_builds_with_non_symbol_arg_is_skipped
+        refs = collect(<<~RUBY)
+          class Mutation
+            builds "not_a_symbol"
+          end
+        RUBY
+
+        refute refs.any? { |r| r.name == "build_not_a_symbol" }
+      end
+
+      def test_graphql_argument_with_hash_splat_does_not_crash
+        refs = collect(<<~RUBY)
+          opts = { null: false }
+          argument :id, ID, **opts
+        RUBY
+
+        assert_kind_of Array, refs
+      end
+
+      def test_graphql_argument_with_non_matching_key_is_skipped
+        refs = collect(<<~RUBY)
+          argument :name, String, null: false, description: "The name"
+        RUBY
+
+        refute refs.any? { |r| r.kind == :method && r.name == "description" }
+      end
+
+      def test_aasm_with_hash_splat_does_not_crash
+        refs = collect(<<~RUBY)
+          opts = { after: :notify }
+          event :activate, **opts
+        RUBY
+
+        assert_kind_of Array, refs
+      end
+
+      def test_delegate_prefix_false_uses_bare_name
+        refs = collect(<<~RUBY)
+          class Foo
+            delegate :name, to: :profile, prefix: false
+          end
+        RUBY
+
+        assert_includes refs.select { |r| r.kind == :method }.map(&:name), "name"
+      end
+
+      def test_delegate_without_prefix_option_uses_bare_name
+        refs = collect(<<~RUBY)
+          class Foo
+            delegate :name, to: :profile
+          end
+        RUBY
+
+        assert_includes refs.select { |r| r.kind == :method }.map(&:name), "name"
+      end
+
+      def test_aasm_event_with_no_matching_callback_key
+        # Non-callback hash key in AASM event is silently ignored
+        refs = collect(<<~RUBY)
+          class Order
+            event :activate, transitions_to: :active
+          end
+        RUBY
+
+        refute refs.any? { |r| r.kind == :method && r.name == "active" }
+      end
+
+      def test_aasm_collect_symbol_or_array_with_non_symbol_element
+        # An array containing a string literal instead of a symbol is silently skipped
+        refs = collect(<<~RUBY)
+          class Order
+            event :activate, after: ["not_a_symbol"]
+          end
+        RUBY
+
+        refute refs.any? { |r| r.kind == :method && r.name == "not_a_symbol" }
+      end
+
+      def test_graphql_argument_non_symbol_prepare_is_skipped
+        refs = collect(<<~RUBY)
+          class Mutation
+            argument :id, ID, prepare: -> (v, _) { v }
+          end
+        RUBY
+
+        refute refs.any? { |r| r.kind == :method && r.name.start_with?("load_") }
+      end
+
+      def test_graphql_non_builds_non_keyword_arg_is_skipped
+        refs = collect(<<~RUBY)
+          class Mutation
+            argument :id, ID
+          end
+        RUBY
+
+        # No prepare:/method: keyword → no extra method refs emitted
+        refute refs.any? { |r| r.kind == :method && r.name == "id" }
+      end
+
+      def test_graphql_field_method_emits_reference
+        refs = collect(<<~RUBY)
+          class UserType < BaseObject
+            field :full_name, String, method: :display_name
+          end
+        RUBY
+
+        assert_includes refs.select { |r| r.kind == :method }.map(&:name), "display_name"
+      end
+
       def test_validate_symbol_emits_method_reference
         refs = collect(<<~RUBY)
           class Model

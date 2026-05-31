@@ -10,6 +10,23 @@ module SorbetDeadcode
 
       DYNAMIC_DISPATCH_METHODS = %w[send __send__ public_send try].to_set.freeze
 
+      # Rails `delegate :foo, :bar, to: :target` creates forwarding methods.
+      # The delegated names are referenced via define_method at class load time.
+      DELEGATE_DSL_METHODS = %w[delegate].to_set.freeze
+
+      # AASM `event :activate, after: [:notify], guard: :can_activate?` dispatches
+      # symbol names as callbacks or guards. Also handles `error_on_all_events :method`.
+      AASM_DSL_METHODS = %w[
+        error_on_all_events
+        aasm_event event
+      ].to_set.freeze
+
+      # GraphQL-ruby DSL patterns that reference Ruby methods by symbol.
+      # `builds :foo` → calls `build_foo`
+      # `argument :x, prepare: :method` → calls `method`
+      # `field :x, method: :method_name` → calls `method_name`
+      GRAPHQL_DSL_METHODS = %w[builds argument field mutation].to_set.freeze
+
       # ActiveModel/Rails DSL methods that take symbol names of methods to call.
       # `validate :method_name` dispatches via send(method_name) during validation.
       # `before_validation/after_validation :method` similarly dispatches.
@@ -101,9 +118,19 @@ module SorbetDeadcode
         if DYNAMIC_DISPATCH_METHODS.include?(name) && node.arguments
           collect_dynamic_dispatch(node, location)
         elsif name == "accepts_nested_attributes_for" && node.receiver.nil? && node.arguments
-          # Rails generates `assoc_attributes=` and allows subclasses to override it.
-          # Collect a method_prefix reference so any `*_attributes=` override stays alive.
           collect_nested_attributes_references(node, location)
+          super
+          return
+        elsif DELEGATE_DSL_METHODS.include?(name) && node.receiver.nil? && node.arguments
+          collect_delegate_references(node, location)
+          super
+          return
+        elsif AASM_DSL_METHODS.include?(name) && node.receiver.nil? && node.arguments
+          collect_aasm_references(node, location)
+          super
+          return
+        elsif GRAPHQL_DSL_METHODS.include?(name) && node.receiver.nil? && node.arguments
+          collect_graphql_references(node, location, method_name: name)
           super
           return
         elsif VALIDATOR_DSL_METHODS.include?(name) && node.receiver.nil? && node.arguments
@@ -201,6 +228,110 @@ module SorbetDeadcode
           # e.g. __send__(method_name) inside a class => any method in this
           # namespace may be reached; exclude them from dead results.
           @references << Reference.new(name: current_namespace, location: location, kind: :dynamic_namespace)
+        end
+      end
+
+      # `delegate :foo, :bar, to: :target` — foo= and bar are dispatched by ActiveSupport.
+      # Optionally `prefix: true` or `prefix: :target` changes the generated name.
+      def collect_delegate_references(node, location)
+        prefix = nil
+        node.arguments.arguments.each do |arg|
+          if arg.is_a?(Prism::KeywordHashNode)
+            arg.elements.each do |assoc|
+              next unless assoc.is_a?(Prism::AssocNode)
+
+              key = assoc.key.slice.delete_suffix(":")
+              next unless key == "prefix"
+
+              val = assoc.value
+              prefix = if val.is_a?(Prism::TrueNode)
+                # `prefix: true` → method name is inferred from :to value; we
+                # conservatively emit a method_prefix reference so all prefixed
+                # variants stay alive.
+                :true_prefix
+              elsif val.is_a?(Prism::SymbolNode)
+                val.unescaped
+              end
+            end
+          end
+        end
+
+        node.arguments.arguments.each do |arg|
+          next unless arg.is_a?(Prism::SymbolNode)
+
+          name = arg.unescaped
+          method_name = prefix && prefix != :true_prefix ? "#{prefix}_#{name}" : name
+          @references << Reference.new(name: method_name, location: location, kind: :method)
+
+          if prefix == :true_prefix
+            # Emit a method_prefix so `target_foo` style names all survive.
+            @references << Reference.new(name: "#{name}_", location: location, kind: :method_prefix)
+          end
+        end
+      end
+
+      # AASM event callbacks/guards: `event :activate, after: [:notify], guard: :can?`
+      # Also: `error_on_all_events :handle_error`
+      def collect_aasm_references(node, location)
+        node.arguments.arguments.each do |arg|
+          if arg.is_a?(Prism::SymbolNode)
+            # First positional symbol: `error_on_all_events :handle_error`
+            @references << Reference.new(name: arg.unescaped, location: location, kind: :method)
+          elsif arg.is_a?(Prism::KeywordHashNode)
+            arg.elements.each do |assoc|
+              next unless assoc.is_a?(Prism::AssocNode)
+
+              key = assoc.key.slice.delete_suffix(":")
+              next unless %w[after before guard after_commit after_rollback on_transition error].include?(key)
+
+              collect_symbol_or_array(assoc.value, location)
+            end
+          end
+        end
+      end
+
+      def collect_symbol_or_array(node, location)
+        case node
+        when Prism::SymbolNode
+          @references << Reference.new(name: node.unescaped, location: location, kind: :method)
+        when Prism::ArrayNode
+          node.elements.each { |el| collect_symbol_or_array(el, location) }
+        end
+      end
+
+      # GraphQL-ruby DSL patterns.
+      # `builds :thing` → `build_thing` method called by the mutation framework.
+      # `argument :x, prepare: :method` → `method` called when resolving the input.
+      # `field :x, method: :method_name` / `argument :x, method: :method_name`.
+      def collect_graphql_references(node, location, method_name:)
+        if method_name == "builds"
+          node.arguments.arguments.each do |arg|
+            next unless arg.is_a?(Prism::SymbolNode)
+
+            @references << Reference.new(
+              name: "build_#{arg.unescaped}",
+              location: location,
+              kind: :method,
+            )
+          end
+          return
+        end
+
+        # argument / field: look for `prepare:` and `method:` keyword options.
+        node.arguments.arguments.each do |arg|
+          next unless arg.is_a?(Prism::KeywordHashNode)
+
+          arg.elements.each do |assoc|
+            next unless assoc.is_a?(Prism::AssocNode)
+
+            key = assoc.key.slice.delete_suffix(":")
+            next unless %w[prepare method].include?(key)
+
+            val = assoc.value
+            next unless val.is_a?(Prism::SymbolNode)
+
+            @references << Reference.new(name: val.unescaped, location: location, kind: :method)
+          end
         end
       end
 

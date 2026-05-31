@@ -11,10 +11,15 @@ options = {
   lsp: false,
   hybrid: false,
   file_table: false,
-  verify: false,
+  verify: true,
   parallel: 10,
   project_root: ".",
   reference_root: nil,
+  output_index: nil,
+  load_index: nil,
+  intersect_index: nil,
+  filter_paths: [],
+  show_confidence: false,
 }
 
 OptionParser.new do |opts|
@@ -40,8 +45,8 @@ OptionParser.new do |opts|
     options[:file_table] = true
   end
 
-  opts.on("--verify", "Verify candidates with ripgrep (reduces false positives)") do
-    options[:verify] = true
+  opts.on("--no-verify", "Skip ripgrep verification pass (faster but more false positives)") do
+    options[:verify] = false
   end
 
   opts.on("--parallel N", Integer, "Number of concurrent LSP queries (default: 10, use with --lsp or --hybrid)") do |n|
@@ -50,6 +55,32 @@ OptionParser.new do |opts|
 
   opts.on("--project-root DIR", "Project root where sorbet/ lives (default: .)") do |dir|
     options[:project_root] = dir
+  end
+
+  opts.on("--no-routes", "Disable automatic config/routes.rb scanning for controller action references.") do
+    options[:no_routes] = true
+  end
+
+  opts.on("--index OUTPUT_FILE",
+    "Run analysis and save the full dead-code index to a JSON file for later use.",
+    "Combine with --report to load-and-filter instead of re-analyzing.") do |f|
+    options[:output_index] = f
+  end
+
+  opts.on("--report INDEX_FILE",
+    "Load a pre-built index and report dead code without re-analyzing.",
+    "Combine with --paths to filter the report to specific directories.") do |f|
+    options[:load_index] = f
+  end
+
+  opts.on("--intersect OTHER_INDEX",
+    "Only report definitions that appear in BOTH this run AND OTHER_INDEX.",
+    "Use to cross-compare sorbet-deadcode results with Spoom or another run.") do |f|
+    options[:intersect_index] = f
+  end
+
+  opts.on("--confidence", "Show confidence tier (high/medium/low) for each candidate.") do
+    options[:show_confidence] = true
   end
 
   opts.on("--reference-root DIR",
@@ -70,11 +101,34 @@ OptionParser.new do |opts|
 end.parse!
 
 options[:paths] = ARGV.empty? ? ["."] : ARGV
+options[:filter_paths] = options[:paths] if options[:load_index]
 options[:exclude_paths] = [] if options[:include_specs]
 
 mode_count = [options[:lsp], options[:hybrid], options[:file_table]].count(true)
 if mode_count > 1
   $stderr.puts "Error: Only one of --lsp, --hybrid, or --file-table may be specified."
+  exit 1
+end
+
+# --report: load a pre-built index and optionally filter by paths
+if options[:load_index]
+  index = SorbetDeadcode::Index.load(options[:load_index])
+  index = index.filter_paths(options[:filter_paths]) unless options[:filter_paths].empty?
+  index = index.intersect(SorbetDeadcode::Index.load(options[:intersect_index])) if options[:intersect_index]
+  results = index.dead_definitions
+  $stderr.puts "Loaded #{results.size} dead code candidates from #{options[:load_index]}."
+
+  if results.empty?
+    $stderr.puts "No dead code found."
+    exit 0
+  end
+
+  $stderr.puts "Found #{results.size} dead code candidates:\n\n"
+  results.sort_by(&:full_name).each do |defn|
+    line = "  #{defn.kind} #{defn.full_name}\n    #{defn.location}"
+    puts line
+  end
+  puts "\n#{results.size} dead code candidates found."
   exit 1
 end
 
@@ -99,11 +153,17 @@ elsif options[:lsp]
     parallel: options[:parallel],
   )
 else
-  SorbetDeadcode.analyze(
+  candidates = SorbetDeadcode.analyze(
     options[:paths],
     exclude_paths: options[:exclude_paths],
     reference_paths: options[:reference_root],
   )
+
+  unless options[:no_routes]
+    candidates = SorbetDeadcode::Refiners::RouteRefiner.new(options[:project_root]).refine(candidates)
+  end
+
+  candidates
 end
 
 if options[:verify] && !results.empty?
@@ -114,6 +174,26 @@ if options[:verify] && !results.empty?
   results = verifier.verify(results)
 end
 
+# --index: save the result to a JSON file for later --report / --intersect use
+if options[:output_index]
+  index = SorbetDeadcode::Index.new(
+    dead_definitions: results,
+    paths: options[:paths],
+    exclude_paths: options[:exclude_paths],
+  )
+  index.write(options[:output_index])
+  $stderr.puts "Index written to #{options[:output_index]} (#{results.size} candidates)."
+end
+
+# --intersect: filter to definitions that also appear in another index
+if options[:intersect_index]
+  other = SorbetDeadcode::Index.load(options[:intersect_index])
+  results = SorbetDeadcode::Index.new(dead_definitions: results, paths: options[:paths])
+              .intersect(other)
+              .dead_definitions
+  $stderr.puts "Intersection: #{results.size} candidates appear in both indexes."
+end
+
 if results.empty?
   $stderr.puts "No dead code found."
   exit 0
@@ -121,8 +201,21 @@ end
 
 $stderr.puts "Found #{results.size} dead code candidates:\n\n"
 
+# Build ref index for confidence scoring if requested
+ref_index = if options[:show_confidence]
+  require "sorbet_deadcode/analyzer/dead_code_analyzer"
+  # Approximate from the existing results — build a minimal ref_index
+  { typed_by_name: {}, untyped_methods: Set.new, constants: Set.new,
+    method_prefixes: Set.new, dynamic_namespaces: Set.new }
+end
+
 results.sort_by(&:full_name).each do |defn|
-  puts "  #{defn.kind} #{defn.full_name}"
+  if options[:show_confidence] && ref_index
+    confidence = SorbetDeadcode::Analyzer::Confidence.for(defn, ref_index)
+    puts "  [#{confidence}] #{defn.kind} #{defn.full_name}"
+  else
+    puts "  #{defn.kind} #{defn.full_name}"
+  end
   puts "    #{defn.location}"
 end
 

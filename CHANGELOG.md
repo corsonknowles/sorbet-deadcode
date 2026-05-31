@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+### Changed
+- **`--verify` is now the default** — ripgrep verification runs automatically after every
+  analysis pass. Use `--no-verify` to opt out. This eliminates the bulk of name-collision
+  false positives with negligible overhead (~seconds on large repos).
+
+### Added
+- **Framework DSL plugins** (closes #3) — `delegate`, AASM events, and GraphQL mutations
+  now emit method references so their callback targets and generated methods stay alive:
+  - `delegate :foo, :bar, to: :target` keeps `foo` and `bar` alive
+  - `delegate ... prefix: :scope` keeps `scope_foo` alive; `prefix: true` keeps `*_foo` variants alive
+  - AASM `event :activate, after: [:notify], guard: :can_activate?` keeps all symbol callbacks alive
+  - `error_on_all_events :handle_aasm_error` keeps the handler alive
+  - GraphQL `builds :order` keeps `build_order` alive
+  - GraphQL `argument :x, prepare: :load_x` and `field :x, method: :display` keep targets alive
+- **Confidence tiers** (closes #5) — `SorbetDeadcode::Analyzer::Confidence.for(definition, ref_index)`
+  returns `:high`, `:medium`, or `:low`; `--confidence` flag annotates CLI output with the tier
+- **`Index` class + `--index` / `--report` / `--intersect` subcommands** (closes #9, #8):
+  - `--index output.json` saves the full dead-code index for later querying
+  - `--report index.json [paths...]` loads an index and filters to paths without re-analyzing
+  - `--intersect other.json` narrows results to candidates appearing in both indexes (enables
+    Spoom cross-comparison workflow)
+  - `Index#filter_paths`, `Index#for_paths`, `Index#intersect` available as a Ruby API
+- **Performance regression guard** (closes #6) — two benchmark specs ensure the liveness
+  analysis stays O(N) on a 1000-definition synthetic codebase (< 5s threshold)
+
+## Previously released (main)
+
 ### Added
 - **Interpolated dynamic dispatch detector** — `public_send("dump_#{type}")` keeps all `dump_*` methods alive; `__send__(method_name)` (variable target) keeps every method in the enclosing namespace alive
 - **Inline constant nesting detector** — `PARENT = [CHILD_A = 1, CHILD_B = 2]` never reports `PARENT` dead while a child constant is still referenced

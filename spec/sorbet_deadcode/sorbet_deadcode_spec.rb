@@ -42,6 +42,16 @@ class SorbetDeadcodeModuleSpec < Minitest::Test
     end
   end
 
+  def test_analyze_and_refine_applies_refiners
+    SorbetDeadcode::Lsp::DeadCodeFinder.stub(:new, FakeRunner.new) do
+      applied = false
+      stub_refiner = Object.new
+      stub_refiner.define_singleton_method(:refine) { |c| applied = true; c }
+      SorbetDeadcode.analyze_and_refine(paths: ["."], refiners: [stub_refiner])
+      assert applied
+    end
+  end
+
   def test_analyze_and_verify_runs_verifier
     dir = Dir.mktmpdir
     File.write(File.join(dir, "a.rb"), "class A\n  def lonely_method; end\nend\n")

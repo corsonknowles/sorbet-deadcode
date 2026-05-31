@@ -9,6 +9,10 @@ require_relative "sorbet_deadcode/collector/definition_collector"
 require_relative "sorbet_deadcode/collector/reference_collector"
 require_relative "sorbet_deadcode/resolver/type_resolver"
 require_relative "sorbet_deadcode/analyzer/dead_code_analyzer"
+require_relative "sorbet_deadcode/analyzer/confidence"
+require_relative "sorbet_deadcode/index"
+require_relative "sorbet_deadcode/scanners/route_scanner"
+require_relative "sorbet_deadcode/refiners/route_refiner"
 require_relative "sorbet_deadcode/lsp/client"
 require_relative "sorbet_deadcode/lsp/dead_code_finder"
 require_relative "sorbet_deadcode/lsp/hybrid_finder"
@@ -26,6 +30,20 @@ module SorbetDeadcode
         reference_paths: reference_paths,
       )
       analyzer.run
+    end
+
+    # Run analysis and then apply a chain of second-pass refiners.
+    # Refiners remove false positives from non-Ruby sources (routes, YAML, ERB).
+    # Each refiner responds to #refine(candidates) → candidates.
+    #
+    # Example:
+    #   SorbetDeadcode.analyze_and_refine(
+    #     paths: ["app/"],
+    #     refiners: [SorbetDeadcode::Refiners::RouteRefiner.new(".")]
+    #   )
+    def analyze_and_refine(paths:, exclude_paths: [], reference_paths: nil, refiners: [])
+      candidates = analyze(paths, exclude_paths: exclude_paths, reference_paths: reference_paths)
+      refiners.reduce(candidates) { |c, refiner| refiner.refine(c) }
     end
 
     def analyze_with_lsp(project_root:, paths:, exclude_paths: [], parallel: 1)
