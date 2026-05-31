@@ -185,9 +185,10 @@ module SorbetDeadcode
       # - their name starts with a collected interpolation prefix (`dump_#{x}`), or
       # - their owning namespace contains a non-literal send/__send__/public_send.
       def dynamically_dispatched?(definition, ref_index)
-        # Precise prefix resolution always keeps a method alive (interpolated
+        # Precise prefix/suffix resolution always keeps a method alive (interpolated
         # dispatch and finite symbol-list resolution produce these).
         return true if ref_index[:method_prefixes].any? { |p| definition.name.start_with?(p) }
+        return true if ref_index[:method_suffixes].any? { |s| definition.name.end_with?(s) }
 
         # Namespace-level fallback for unresolvable variable dispatch. In :report
         # mode we don't exclude here — the method is reported but downgraded to
@@ -232,6 +233,7 @@ module SorbetDeadcode
         constants = Set.new
         typed_by_name = {}
         method_prefixes = Set.new
+        method_suffixes = Set.new
         dynamic_namespaces = Set.new
 
         @references.each do |ref|
@@ -246,6 +248,8 @@ module SorbetDeadcode
             constants << ref.name
           when :method_prefix
             method_prefixes << ref.name
+          when :method_suffix
+            method_suffixes << ref.name
           when :dynamic_namespace
             dynamic_namespaces << ref.name
           end
@@ -256,6 +260,7 @@ module SorbetDeadcode
           constants: constants,
           typed_by_name: typed_by_name,
           method_prefixes: method_prefixes,
+          method_suffixes: method_suffixes,
           dynamic_namespaces: dynamic_namespaces,
         }
       end

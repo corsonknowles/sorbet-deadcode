@@ -234,6 +234,46 @@ module SorbetDeadcode
         refute_includes dead_names, "dump_employee"
       end
 
+      def test_interpolated_dispatch_keeps_suffix_family_alive
+        analyzer = analyze_source(<<~RUBY)
+          class SubmissionConfig
+            def acknowledger_start_time
+            end
+
+            def unsubmitted_files_checker_start_time
+            end
+
+            def run(process)
+              public_send("\#{process}_start_time")
+            end
+          end
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "acknowledger_start_time"
+        refute_includes dead_names, "unsubmitted_files_checker_start_time"
+      end
+
+      def test_interpolated_dispatch_does_not_protect_other_suffixes
+        analyzer = analyze_source(<<~RUBY)
+          class SubmissionConfig
+            def acknowledger_start_time
+            end
+
+            def truly_dead
+            end
+
+            def run(process)
+              public_send("\#{process}_start_time")
+            end
+          end
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "acknowledger_start_time"
+        assert_includes dead_names, "truly_dead"
+      end
+
       def test_interpolated_dispatch_does_not_protect_other_prefixes
         analyzer = analyze_source(<<~RUBY)
           class Serializer

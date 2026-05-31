@@ -11,6 +11,12 @@
   - keyword mass-assignment — `Model.new(foo: x)`, `record.update(foo: x)`, FactoryBot
     `build(:m, foo: x)`, `assign_attributes(foo: x)`, etc.; now emits a `foo=` reference per
     symbol key for those constructor/update entry points.
+- **Suffix-interpolation dynamic dispatch** (#49) — methods reached via `public_send("#{x}_start_time")`
+  (a dynamic prefix with a literal suffix) were reported dead because the assembled name never
+  appears literally. The collector now emits a `:method_suffix` reference (mirroring `:method_prefix`),
+  and any definition whose name ends with a dispatched suffix is kept alive. Combined
+  prefix+suffix interpolation (`"a_#{x}_b"`) emits both. Local-variable-held interpolations
+  (`m = "#{x}_at"; send(m)`) are tracked per-method without leaking across method bodies.
 
 ### Added
 - **RABL template reference scanner** (#26, part of #4) — a second-pass refiner for `.rabl`

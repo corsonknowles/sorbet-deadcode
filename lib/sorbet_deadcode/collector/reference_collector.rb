@@ -67,6 +67,8 @@ module SorbetDeadcode
         @current_method_name = nil
         # Local var name => interpolation prefix, e.g. `m = "dump_#{x}"` records "dump_".
         @local_prefixes = {}
+        # Local var name => interpolation suffix, e.g. `m = "#{x}_at"` records "_at".
+        @local_suffixes = {}
         # Constant name => [symbol names] for literal symbol arrays, e.g. METHODS = %i[a b].
         @symbol_array_constants = {}
         # Block-param name => [symbol names] in scope while visiting an iteration block.
@@ -118,6 +120,7 @@ module SorbetDeadcode
         # would leak a `dump_` prefix into a different method that reuses the name `m`.
         saved_local_types = @local_types.dup
         saved_local_prefixes = @local_prefixes.dup
+        saved_local_suffixes = @local_suffixes.dup
 
         if @type_resolver && current_namespace
           sig = @type_resolver.method_signatures.dig(current_namespace, @current_method_name)
@@ -130,6 +133,7 @@ module SorbetDeadcode
 
         @local_types = saved_local_types
         @local_prefixes = saved_local_prefixes
+        @local_suffixes = saved_local_suffixes
         @current_method_name = old_method
       end
 
@@ -250,6 +254,13 @@ module SorbetDeadcode
           @local_prefixes[node.name.to_s] = prefix
         end
 
+        # Track `m = "#{x}_at"` so a later send(m) can emit a precise method_suffix
+        # reference (keeping `*_at` methods alive) instead of excluding the whole namespace.
+        suffix = literal_suffix(node.value)
+        if suffix && !suffix.empty?
+          @local_suffixes[node.name.to_s] = suffix
+        end
+
         super
       end
 
@@ -307,18 +318,27 @@ module SorbetDeadcode
           return
         end
 
-        # Variable assigned an interpolated string with a literal prefix,
+        # Variable assigned an interpolated string with a literal prefix and/or suffix,
         # e.g. `m = "dump_#{x}"; send(m)` => emit the `dump_` prefix.
-        if first_arg.is_a?(Prism::LocalVariableReadNode) && @local_prefixes.key?(first_arg.name.to_s)
-          @references << Reference.new(name: @local_prefixes[first_arg.name.to_s], location: location, kind: :method_prefix)
+        if first_arg.is_a?(Prism::LocalVariableReadNode) &&
+           (@local_prefixes.key?(first_arg.name.to_s) || @local_suffixes.key?(first_arg.name.to_s))
+          name = first_arg.name.to_s
+          @references << Reference.new(name: @local_prefixes[name], location: location, kind: :method_prefix) if @local_prefixes.key?(name)
+          @references << Reference.new(name: @local_suffixes[name], location: location, kind: :method_suffix) if @local_suffixes.key?(name)
           return
         end
 
-        # Non-literal target: the method name is built at runtime.
+        # Non-literal target: the method name is built at runtime. An interpolated
+        # argument may carry a literal prefix (`"dump_#{x}"`) and/or suffix
+        # (`"#{x}_start_time"`); emit whichever are present so the matching method
+        # family stays alive.
         prefix = literal_prefix(first_arg)
-        if prefix && !prefix.empty?
-          # e.g. public_send("dump_#{type}") => any `dump_*` method may be reached.
-          @references << Reference.new(name: prefix, location: location, kind: :method_prefix)
+        suffix = literal_suffix(first_arg)
+        if (prefix && !prefix.empty?) || (suffix && !suffix.empty?)
+          # e.g. public_send("dump_#{type}") => any `dump_*` method may be reached;
+          #      public_send("#{p}_start_time") => any `*_start_time` method may be reached.
+          @references << Reference.new(name: prefix, location: location, kind: :method_prefix) if prefix && !prefix.empty?
+          @references << Reference.new(name: suffix, location: location, kind: :method_suffix) if suffix && !suffix.empty?
         elsif current_namespace
           # e.g. __send__(method_name) inside a class => the runtime target is
           # unknowable, so any method in this namespace may be reached. Conservatively
@@ -558,6 +578,18 @@ module SorbetDeadcode
         return nil unless first.is_a?(Prism::StringNode)
 
         first.unescaped
+      end
+
+      # The trailing literal of an interpolated string/symbol, e.g. the `_start_time`
+      # in `"#{x}_start_time"`. Returns nil when the last part is not a literal string.
+      def literal_suffix(node)
+        node = node.receiver if node.is_a?(Prism::CallNode) && node.receiver # e.g. "...".to_sym
+        return nil unless node.is_a?(Prism::InterpolatedStringNode) || node.is_a?(Prism::InterpolatedSymbolNode)
+
+        last = node.parts.last
+        return nil unless last.is_a?(Prism::StringNode)
+
+        last.unescaped
       end
 
       def resolve_receiver_type(receiver_node)

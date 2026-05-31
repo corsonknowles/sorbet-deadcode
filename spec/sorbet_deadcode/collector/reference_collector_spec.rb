@@ -788,8 +788,10 @@ module SorbetDeadcode
         refute refs.any? { |r| r.kind == :method_prefix || r.kind == :dynamic_namespace }
       end
 
-      def test_interpolation_leading_with_expression_has_no_prefix
-        # Starts with the interpolation, so there's no literal prefix to collect.
+      def test_interpolation_leading_with_expression_emits_suffix_not_namespace
+        # Starts with the interpolation, so there's no literal prefix — but the trailing
+        # literal is collected as a method_suffix, keeping `*_suffix` methods alive without
+        # falling back to excluding the whole namespace.
         refs = collect(<<~'RUBY')
           class Worker
             def go(type)
@@ -799,6 +801,55 @@ module SorbetDeadcode
         RUBY
 
         refute refs.any? { |r| r.kind == :method_prefix }
+        suffix_ref = refs.find { |r| r.kind == :method_suffix }
+        assert_equal "_suffix", suffix_ref.name
+        refute refs.any? { |r| r.kind == :dynamic_namespace }
+      end
+
+      def test_local_var_interpolated_suffix_emits_method_suffix
+        refs = collect(<<~'RUBY')
+          class Worker
+            def go(p)
+              m = "#{p}_start_time"
+              public_send(m)
+            end
+          end
+        RUBY
+
+        suffix_ref = refs.find { |r| r.kind == :method_suffix }
+        assert_equal "_start_time", suffix_ref.name
+      end
+
+      def test_interpolated_prefix_and_suffix_emits_both
+        refs = collect(<<~'RUBY')
+          class Worker
+            def go(x)
+              public_send("a_#{x}_b")
+            end
+          end
+        RUBY
+
+        assert_equal "a_", refs.find { |r| r.kind == :method_prefix }&.name
+        assert_equal "_b", refs.find { |r| r.kind == :method_suffix }&.name
+      end
+
+      def test_local_suffix_does_not_leak_across_methods
+        refs = collect(<<~'RUBY')
+          class Worker
+            def first(p)
+              m = "#{p}_at"
+              public_send(m)
+            end
+
+            def second(m)
+              public_send(m)
+            end
+          end
+        RUBY
+
+        # Only the first method's send should carry the `_at` suffix; the second reuses
+        # the name `m` as a plain parameter and must fall back to dynamic_namespace.
+        assert_equal 1, refs.count { |r| r.kind == :method_suffix }
         assert refs.any? { |r| r.kind == :dynamic_namespace }
       end
 
