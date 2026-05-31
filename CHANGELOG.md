@@ -9,6 +9,11 @@
   now snapshot/restored around each method body, matching local-variable scoping.
 
 ### Changed
+- **`--report` now combines with `--classify` / `--confidence`** (#37) — the load-index
+  branch previously returned before the classify/confidence rendering, so a cached index
+  could only be printed plainly. The report path now flows through the shared pipeline
+  (skipping analysis, verification, and re-indexing), completing the index → classify
+  workflow.
 - **Graceful degradation when ripgrep is missing** (#29) — now that `--verify` is the
   default, a missing `rg` no longer crashes: the verifier returns candidates unverified
   and the classifier marks them `:review` / `:ripgrep_unavailable`, each with a clear
