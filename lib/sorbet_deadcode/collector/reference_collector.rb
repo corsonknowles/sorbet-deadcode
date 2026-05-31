@@ -123,6 +123,11 @@ module SorbetDeadcode
         name = node.name.to_s
         location = format_location(node.location)
 
+        # RSpec dynamic predicate matchers (be_foo, be_a_foo, have_foo) call
+        # foo?/has_foo? without the literal name appearing. Emit those predicate
+        # references so methods tested only through a matcher aren't reported dead.
+        collect_predicate_matcher_references(name, location)
+
         # Resolve dispatch over a finite symbol list, e.g. `[:a, :b].each { |m| send(m) }`
         # or `METHODS.each { |m| send(m) }`. Bind the block param to the resolved symbol
         # list while visiting the block so the send(m) inside emits concrete references.
@@ -317,6 +322,33 @@ module SorbetDeadcode
         return nil unless node.elements.all? { |el| el.is_a?(Prism::SymbolNode) }
 
         node.elements.map(&:unescaped)
+      end
+
+      # RSpec dynamic predicate matchers reference predicate methods implicitly:
+      #   be_foo            => foo?
+      #   be_a_foo / be_an_foo => foo?   (a_/an_ article stripped)
+      #   have_foo          => has_foo?  (and have_foo? as a fallback shape)
+      # Over-emitting references here is safe: it can only keep a method alive, never
+      # mark one dead.
+      def collect_predicate_matcher_references(name, location)
+        predicate_matcher_names(name).each do |predicate|
+          @references << Reference.new(name: predicate, location: location, kind: :method)
+        end
+      end
+
+      def predicate_matcher_names(name)
+        if name.start_with?("be_an_")
+          ["#{name.delete_prefix('be_an_')}?"]
+        elsif name.start_with?("be_a_")
+          ["#{name.delete_prefix('be_a_')}?"]
+        elsif name.start_with?("be_")
+          ["#{name.delete_prefix('be_')}?"]
+        elsif name.start_with?("have_")
+          base = name.delete_prefix("have_")
+          ["has_#{base}?", "have_#{base}?"]
+        else
+          []
+        end
       end
 
       # `delegate :foo, :bar, to: :target` — foo= and bar are dispatched by ActiveSupport.

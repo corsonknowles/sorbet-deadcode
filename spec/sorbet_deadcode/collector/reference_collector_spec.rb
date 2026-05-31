@@ -112,6 +112,37 @@ module SorbetDeadcode
         assert_includes constant_names, "Outer::Middle::Inner"
       end
 
+      # Issue #21: RSpec predicate matchers
+      def test_be_matcher_emits_predicate_reference
+        refs = collect(<<~RUBY)
+          expect(record.type).to be_task_run_execution
+        RUBY
+
+        assert_includes refs.select { |r| r.kind == :method }.map(&:name), "task_run_execution?"
+      end
+
+      def test_be_a_matcher_strips_article
+        refs = collect("expect(x).to be_a_user")
+        assert_includes refs.select { |r| r.kind == :method }.map(&:name), "user?"
+      end
+
+      def test_be_an_matcher_strips_article
+        refs = collect("expect(x).to be_an_admin")
+        assert_includes refs.select { |r| r.kind == :method }.map(&:name), "admin?"
+      end
+
+      def test_have_matcher_emits_has_predicate
+        refs = collect("expect(x).to have_key(:a)")
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "has_key?"
+        assert_includes names, "have_key?"
+      end
+
+      def test_non_matcher_call_emits_no_predicate_reference
+        refs = collect("foo.bar")
+        refute refs.any? { |r| r.kind == :method && r.name == "bar?" }
+      end
+
       def test_delegate_emits_method_reference
         refs = collect(<<~RUBY)
           class Foo

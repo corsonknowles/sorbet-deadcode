@@ -357,6 +357,29 @@ module SorbetDeadcode
         assert_includes dead_names, "DeadModule"
       end
 
+      def test_predicate_used_only_via_be_matcher_is_alive_when_specs_included
+        dir = Dir.mktmpdir
+        File.write(File.join(dir, "status.rb"), <<~RUBY)
+          class Status
+            def active?
+              @state == :active
+            end
+          end
+        RUBY
+        File.write(File.join(dir, "status_spec.rb"), <<~RUBY)
+          RSpec.describe Status do
+            it { expect(subject).to be_active }
+          end
+        RUBY
+
+        analyzer = DeadCodeAnalyzer.new(paths: [dir])
+        analyzer.run
+        # `be_active` in the spec references `active?` — not dead.
+        refute_includes analyzer.dead_definitions.map(&:name), "active?"
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
       def test_respond_to_missing_is_never_dead
         analyzer = analyze_source(<<~RUBY)
           class Proxy

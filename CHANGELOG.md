@@ -2,22 +2,23 @@
 
 ## Unreleased
 
-### Added (issue #10 — dynamic dispatch refinements)
-- **Fix 1 — interpolation prefix via local variable**: `m = "dump_#{x}"; send(m)` now
-  emits a `dump_` method-prefix reference instead of excluding the whole namespace.
-- **Fix 2 — finite symbol-list iteration**: `[:a, :b].each { |m| send(m) }` and
-  `METHODS.each { |m| send(m) }` (where `METHODS = [:a, :b].freeze`) now resolve to the
-  exact method names rather than excluding the namespace.
-- **Fix 3 — `dynamic_dispatch: :report` mode**: instead of excluding methods in a
-  namespace with unresolvable variable dispatch, report them as `:low` confidence
-  candidates for review (opt-in; default remains `:exclude`).
-- **Fix 4 — LSP cross-check (validated, not adopted as default)**: investigated using the
-  LSP pass to validate variable-dispatch candidates instead of excluding them. **Finding:
-  Sorbet's `textDocument/references` is static and cannot resolve `__send__(variable)` /
-  interpolated dispatch any better than Prism**, so dropping the conservative exclusion in
-  hybrid mode would reintroduce the exact `MemberSerializer#dump_*` false positive. The
-  `:exclude` default is therefore retained; fixes 1/2 shrink its blast radius and fix 3 is
-  the explicit review escape hatch. See `test_report_mode_candidate_has_no_static_references`.
+### Added
+- **Dynamic dispatch refinements** (closes #10) — narrows the conservative
+  "exclude the whole namespace" behavior for variable-target `send`/`__send__`/`public_send`:
+  - Interpolation prefix via local variable: `m = "dump_#{x}"; send(m)` emits a `dump_`
+    method-prefix reference instead of excluding the namespace.
+  - Finite symbol-list iteration: `[:a, :b].each { |m| send(m) }` and `METHODS.each { |m| send(m) }`
+    (where `METHODS = [:a, :b].freeze`) resolve to the exact method names.
+  - `dynamic_dispatch: :report` mode (opt-in): report otherwise-excluded namespace methods
+    as `:low` confidence for review instead of keeping them alive. Default stays `:exclude`.
+  - Validated that an LSP cross-check cannot replace the conservative exclusion: Sorbet's
+    `textDocument/references` is static and cannot resolve `__send__(variable)` / interpolated
+    dispatch, so deferring to it would reintroduce the `MemberSerializer#dump_*` false positive.
+- **RSpec predicate matcher references** (closes #21) — `be_foo` / `be_a_foo` /
+  `be_an_foo` now reference `foo?`, and `have_foo` references `has_foo?` / `have_foo?`.
+  Predicate methods exercised only through a matcher (where the literal name never
+  appears) are no longer reported dead. Discovered when `Cowork::InboundEvent::Type#task_run_execution?`
+  was wrongly flagged dead because its only use was `be_task_run_execution` in a spec.
 
 ### Changed
 - **`--verify` is now the default** — ripgrep verification runs automatically after every
