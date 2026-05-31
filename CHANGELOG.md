@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added
+- **YAML reference scanner** (#24, part of #4) — a second-pass refiner that scans framework
+  YAML configs for keys whose value is a qualified `Module::Class.method_name` reference
+  (default key: `method`) and keeps both the method and its owning constant alive. Matching is
+  owner-precise, so an unrelated `method: OtherLib::Geo.city` cannot mask a genuinely dead
+  `City#city`. A configurable `bare_keys` option additionally supports keys whose value is a
+  bare method name. File discovery uses `git ls-files` (sub-second on large repos, vs. tens
+  of seconds for `Dir.glob`) and falls back to globbing outside a git checkout; line-oriented
+  matching tolerates ERB-embedded YAML. The CLI applies it by default (opt out with `--no-yaml`).
+
 ### Removed
 - **Dropped Ruby 3.3 support early** — minimum required Ruby is now 3.4. The reason is
   narrow and deliberate: the `--report`/`--index` path uses `Time#iso8601`, which needs
