@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+- **`Classifier` post-processing step + `--classify` / `--only`** (closes #18) — annotates
+  each candidate with a confidence tier, reference count, risk flags, and a suggested action,
+  folding the manual verification ritual into one pass:
+  - flags: `:live_reference`, `:spec_only`, `:non_ruby_reference`, `:inline_constant`
+  - actions: `:keep` (real production caller), `:delete_with_spec` (spec-only refs),
+    `:review` (non-Ruby ref / inline constant), `:safe_delete` (no references at all)
+  - `--classify` prints the annotation per candidate; `--only ACTION` filters to one action.
+
 ### Changed
 - **`--verify` is now the default** — ripgrep verification runs automatically after every
   analysis pass. Use `--no-verify` to opt out. This eliminates the bulk of name-collision
