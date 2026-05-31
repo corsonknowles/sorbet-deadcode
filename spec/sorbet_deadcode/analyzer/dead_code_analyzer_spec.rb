@@ -298,6 +298,76 @@ module SorbetDeadcode
         assert_includes dead_names, "DeadModule"
       end
 
+      def test_respond_to_missing_is_never_dead
+        analyzer = analyze_source(<<~RUBY)
+          class Proxy
+            def respond_to_missing?(name, include_private = false)
+              @target.respond_to?(name, include_private)
+            end
+          end
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "respond_to_missing?"
+      end
+
+      def test_validate_callback_method_is_alive
+        analyzer = analyze_source(<<~RUBY)
+          class Order
+            validate :check_total
+
+            def check_total
+              errors.add(:total, "must be positive") if total <= 0
+            end
+          end
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "check_total"
+      end
+
+      def test_before_save_callback_method_is_alive
+        analyzer = analyze_source(<<~RUBY)
+          class User
+            before_save :normalize_email
+
+            def normalize_email
+              self.email = email.downcase
+            end
+          end
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "normalize_email"
+      end
+
+      def test_mailer_preview_methods_are_alive
+        analyzer = analyze_source(<<~RUBY)
+          class UserMailerPreview
+            def welcome_email
+            end
+          end
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "welcome_email"
+      end
+
+      def test_accepts_nested_attributes_override_is_alive
+        analyzer = analyze_source(<<~RUBY)
+          class Order
+            accepts_nested_attributes_for :line_items
+
+            def line_items_attributes=(attrs)
+              super(attrs.reject { |a| a[:_destroy] })
+            end
+          end
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "line_items_attributes="
+      end
+
       def test_initialize_is_never_dead
         analyzer = analyze_source(<<~RUBY)
           class Service

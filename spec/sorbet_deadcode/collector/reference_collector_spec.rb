@@ -112,6 +112,122 @@ module SorbetDeadcode
         assert_includes constant_names, "Outer::Middle::Inner"
       end
 
+      def test_validate_symbol_emits_method_reference
+        refs = collect(<<~RUBY)
+          class Model
+            validate :check_name
+            validate :check_email, on: :create
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "check_name"
+        assert_includes names, "check_email"
+      end
+
+      def test_before_save_symbol_emits_method_reference
+        refs = collect(<<~RUBY)
+          class Model
+            before_save :normalize_email
+            after_commit :flush_cache
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "normalize_email"
+        assert_includes names, "flush_cache"
+      end
+
+      def test_validate_with_non_symbol_arg_is_ignored
+        refs = collect(<<~RUBY)
+          class Model
+            validate SomeValidator
+          end
+        RUBY
+
+        refute refs.any? { |r| r.kind == :method && r.name == "SomeValidator" }
+      end
+
+      def test_accepts_nested_attributes_emits_prefix_reference
+        refs = collect(<<~RUBY)
+          class Order
+            accepts_nested_attributes_for :line_items
+          end
+        RUBY
+
+        prefix = refs.find { |r| r.kind == :method_prefix && r.name.include?("line_items") }
+        assert_equal "line_items_attributes", prefix&.name
+      end
+
+      def test_accepts_nested_attributes_ignores_non_symbol_arg
+        refs = collect(<<~RUBY)
+          class Order
+            accepts_nested_attributes_for "line_items"
+          end
+        RUBY
+
+        refute refs.any? { |r| r.kind == :method_prefix && r.name.include?("line_items") }
+      end
+
+      def test_class_with_no_name_components_is_not_dynamic
+        # Edge case: anonymous or deeply-nested constant where split("::").last is
+        # still a non-Preview string. Should NOT mark as dynamic.
+        refs = collect(<<~RUBY)
+          class Widget
+            def render; end
+          end
+        RUBY
+
+        refute refs.any? { |r| r.kind == :dynamic_namespace }
+      end
+
+      def test_class_inheriting_from_preview_superclass_is_dynamic
+        refs = collect(<<~RUBY)
+          class MyPreview < ActionMailer::Preview
+            def some_action
+            end
+          end
+        RUBY
+
+        ns_ref = refs.find { |r| r.kind == :dynamic_namespace }
+        assert ns_ref, "superclass containing Preview should mark the namespace dynamic"
+      end
+
+      def test_mailer_preview_class_marks_namespace_as_dynamic
+        refs = collect(<<~RUBY)
+          class WelcomeMailerPreview < ActionMailer::Preview
+            def welcome_email
+            end
+          end
+        RUBY
+
+        ns_ref = refs.find { |r| r.kind == :dynamic_namespace }
+        assert ns_ref, "expected a dynamic_namespace reference for the preview class"
+      end
+
+      def test_class_ending_in_preview_without_superclass_is_dynamic
+        refs = collect(<<~RUBY)
+          class CompanyMailerPreview
+            def company_created
+            end
+          end
+        RUBY
+
+        ns_ref = refs.find { |r| r.kind == :dynamic_namespace }
+        assert ns_ref
+      end
+
+      def test_non_preview_class_is_not_dynamic
+        refs = collect(<<~RUBY)
+          class WelcomeService
+            def call
+            end
+          end
+        RUBY
+
+        refute refs.any? { |r| r.kind == :dynamic_namespace }
+      end
+
       def test_visitor_subclass_emits_visit_prefix_reference
         refs = collect(<<~RUBY)
           class MyVisitor < Prism::Visitor

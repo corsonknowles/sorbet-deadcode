@@ -51,7 +51,11 @@ module SorbetDeadcode
       end
 
       def build_rg_command(pattern_file)
-        cmd = ["rg", "-f", pattern_file, "-w", "--no-filename", "-o"]
+        # -F (fixed-strings) prevents method names like `valid?` or `save!` from
+        # being interpreted as regex (where `?`/`!` are quantifiers). Without -F,
+        # `foo?` becomes regex `foo?` matching `fo` or `foo`, and the matched output
+        # loses the trailing `?`, so counts[name] always comes back 0 for such names.
+        cmd = ["rg", "-F", "-f", pattern_file, "-w", "--no-filename", "-o"]
         @exclude_paths.each { |ep| cmd += ["--glob", "!#{glob_pattern(ep)}"] }
         cmd << @project_root
         cmd

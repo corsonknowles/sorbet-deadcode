@@ -10,6 +10,24 @@ module SorbetDeadcode
 
       DYNAMIC_DISPATCH_METHODS = %w[send __send__ public_send try].to_set.freeze
 
+      # ActiveModel/Rails DSL methods that take symbol names of methods to call.
+      # `validate :method_name` dispatches via send(method_name) during validation.
+      # `before_validation/after_validation :method` similarly dispatches.
+      VALIDATOR_DSL_METHODS = %w[
+        validate
+        before_validation after_validation
+        before_create after_create around_create
+        before_update after_update around_update
+        before_save after_save around_save
+        before_destroy after_destroy around_destroy
+        after_commit after_rollback
+        after_initialize after_find
+        before_action after_action around_action
+        prepend_before_action append_before_action
+        skip_before_action
+        after_update before_update
+      ].to_set.freeze
+
       def initialize(file_path, type_resolver: nil)
         super()
         @file_path = file_path
@@ -29,12 +47,20 @@ module SorbetDeadcode
         # Prism::BasicVisitor), its visit_* methods are dispatched dynamically by
         # the framework via public_send("visit_#{type}", node). Emit a method_prefix
         # reference so the existing dynamically_dispatched? guard keeps them alive.
+        location = format_location(node.location)
+
         if visitor_subclass?(node)
-          @references << Reference.new(
-            name: "visit_",
-            location: format_location(node.location),
-            kind: :method_prefix,
-          )
+          # Prism::Visitor subclasses: visit_* methods dispatched by framework.
+          @references << Reference.new(name: "visit_", location: location, kind: :method_prefix)
+        end
+
+        if mailer_preview_class?(node)
+          # ActionMailer::Preview subclasses: preview methods are invoked by the
+          # Rails mail preview UI via routing, not by explicit Ruby calls.
+          # Mark the whole namespace as dynamically dispatched so all its methods
+          # (the preview actions) are kept alive.
+          ns = node.constant_path.slice
+          @references << Reference.new(name: ns, location: location, kind: :dynamic_namespace)
         end
 
         super
@@ -74,6 +100,19 @@ module SorbetDeadcode
 
         if DYNAMIC_DISPATCH_METHODS.include?(name) && node.arguments
           collect_dynamic_dispatch(node, location)
+        elsif name == "accepts_nested_attributes_for" && node.receiver.nil? && node.arguments
+          # Rails generates `assoc_attributes=` and allows subclasses to override it.
+          # Collect a method_prefix reference so any `*_attributes=` override stays alive.
+          collect_nested_attributes_references(node, location)
+          super
+          return
+        elsif VALIDATOR_DSL_METHODS.include?(name) && node.receiver.nil? && node.arguments
+          # ActiveModel/Rails validator DSL: `validate :check_something` calls the
+          # named method via send when running validations. Collect each symbol arg
+          # as a method reference so the target is never reported dead.
+          collect_validator_references(node, location)
+          super
+          return
         elsif node.receiver
           receiver_type = resolve_receiver_type(node.receiver)
           @references << Reference.new(
@@ -165,6 +204,30 @@ module SorbetDeadcode
         end
       end
 
+      def collect_nested_attributes_references(node, location)
+        node.arguments.arguments.each do |arg|
+          next unless arg.is_a?(Prism::SymbolNode)
+
+          @references << Reference.new(
+            name: "#{arg.unescaped}_attributes",
+            location: location,
+            kind: :method_prefix,
+          )
+        end
+      end
+
+      def collect_validator_references(node, location)
+        node.arguments.arguments.each do |arg|
+          next unless arg.is_a?(Prism::SymbolNode)
+
+          @references << Reference.new(
+            name: arg.unescaped,
+            location: location,
+            kind: :method,
+          )
+        end
+      end
+
       # Extract the leading literal text of an interpolated string/symbol, e.g.
       # `"dump_#{x}"` or `:"dump_#{x}"` => "dump_". Returns nil if not interpolated
       # or has no leading literal part.
@@ -205,6 +268,22 @@ module SorbetDeadcode
         return false unless superclass
 
         superclass.slice.include?("Visitor")
+      end
+
+      # ActionMailer::Preview subclasses are invoked by the Rails preview UI via
+      # routes, not by explicit Ruby calls. Covers both direct inheritance and the
+      # naming convention (classes whose name ends in MailerPreview / Preview).
+      def mailer_preview_class?(class_node)
+        superclass = class_node.superclass
+        name = node_class_name(class_node)
+
+        (superclass && superclass.slice.include?("Preview")) ||
+          name.end_with?("MailerPreview") ||
+          name.end_with?("Preview")
+      end
+
+      def node_class_name(class_node)
+        class_node.constant_path.slice.split("::").last
       end
 
       def current_namespace

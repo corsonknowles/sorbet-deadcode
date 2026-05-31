@@ -3,6 +3,17 @@
 module SorbetDeadcode
   module Analyzer
     class DeadCodeAnalyzer
+      # Methods that are called by frameworks/Ruby internals and never appear as
+      # explicit call sites in user code. Reporting them dead is always wrong.
+      ALWAYS_ALIVE_METHODS = Set.new(%w[
+        initialize
+        respond_to_missing?
+        method_missing
+        use_relative_model_naming?
+        to_s
+        inspect
+      ]).freeze
+
       attr_reader :definitions, :references, :type_resolver
 
       # reference_paths: additional paths to scan for *references only* (no definitions
@@ -134,9 +145,11 @@ module SorbetDeadcode
             ref_index[:constants].include?(definition.full_name) ||
             co_located_alive?(definition, ref_index)
         when :method, :attr_reader, :attr_writer
-          # initialize is always alive: `Foo.new` references the constant `Foo`,
-          # not the method name, so no explicit call-site reference ever appears.
-          definition.name == "initialize" ||
+          # Ruby/Rails protocol methods that are never called directly.
+          # initialize: .new → constant reference, not method reference.
+          # respond_to_missing?: called by respond_to? / method_missing internally.
+          # use_relative_model_naming?: called by ActiveModel::Naming.
+          ALWAYS_ALIVE_METHODS.include?(definition.name) ||
             dynamically_dispatched?(definition, ref_index) ||
             typed_alive?(definition, ref_index) ||
             name_alive?(definition, ref_index)

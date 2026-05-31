@@ -14,6 +14,36 @@ module SorbetDeadcode
         assert_equal [], @verifier.verify([])
       end
 
+      def test_method_names_with_question_mark_matched_literally
+        # Methods ending in `?` must not be treated as regex quantifiers.
+        # `valid?` as a regex would mean "optionally match 'd'" — wrong.
+        dir = Dir.mktmpdir
+        File.write(File.join(dir, "model.rb"), <<~RUBY)
+          class Model
+            def valid?
+              true
+            end
+
+            def truly_dead_predicate?
+            end
+          end
+
+          Model.new.valid?
+        RUBY
+
+        candidates = SorbetDeadcode.analyze(File.join(dir, "app"))
+        verifier = RipgrepVerifier.new(project_root: dir)
+
+        all_candidates = SorbetDeadcode.analyze(dir)
+        verified = verifier.verify(all_candidates)
+        verified_names = verified.map(&:name)
+
+        refute_includes verified_names, "valid?"
+        assert_includes verified_names, "truly_dead_predicate?"
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
       def test_glob_pattern_passes_through_explicit_globs
         # A path that already contains a glob is used verbatim.
         assert_equal "**/spec/**", @verifier.send(:glob_pattern, "**/spec/**")
