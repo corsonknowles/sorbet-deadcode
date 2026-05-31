@@ -802,6 +802,43 @@ module SorbetDeadcode
         assert refs.any? { |r| r.kind == :dynamic_namespace }
       end
 
+      def test_operator_or_write_emits_reader_and_writer
+        refs = collect(<<~RUBY)
+          self.class.cached_ability_definition ||= build_it
+        RUBY
+
+        names = refs.map(&:name)
+        assert_includes names, "cached_ability_definition"
+        assert_includes names, "cached_ability_definition="
+      end
+
+      def test_operator_plus_write_emits_writer
+        refs = collect("obj.counter += 1\n")
+        assert_includes refs.map(&:name), "counter="
+      end
+
+      def test_and_write_emits_writer
+        refs = collect("obj.flag &&= false\n")
+        assert_includes refs.map(&:name), "flag="
+      end
+
+      def test_mass_assignment_keyword_emits_writer_references
+        refs = collect("EmployeeDonation.new(charity_ein: ein, amount: amt)\n")
+        names = refs.map(&:name)
+        assert_includes names, "charity_ein="
+        assert_includes names, "amount="
+      end
+
+      def test_factory_build_keyword_emits_writer_references
+        refs = collect("build(:employee_donation, charity_ein: ein)\n")
+        assert_includes refs.map(&:name), "charity_ein="
+      end
+
+      def test_non_mass_assignment_call_does_not_emit_writers
+        refs = collect("some_helper(charity_ein: ein)\n")
+        refute_includes refs.map(&:name), "charity_ein="
+      end
+
       def test_bare_send_with_symbol_has_no_receiver_type
         refs = collect(<<~RUBY)
           send(:bare_target)
