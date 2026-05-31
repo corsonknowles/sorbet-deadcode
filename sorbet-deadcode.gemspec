@@ -28,6 +28,7 @@ Gem::Specification.new do |spec|
   spec.executables = ["sorbet-deadcode"]
   spec.require_paths = ["lib"]
 
+  # sorbet-deadcode parses Sorbet `sig` annotations as source text via Prism; it does
+  # not invoke the sorbet-runtime API, so it carries no runtime Sorbet dependency.
   spec.add_dependency "prism", ">= 0.28.0"
-  spec.add_dependency "sorbet-runtime", ">= 0.5.0"
 end
