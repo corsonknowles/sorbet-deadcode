@@ -125,29 +125,18 @@ if mode_count > 1
   exit 1
 end
 
-# --report: load a pre-built index and optionally filter by paths
-if options[:load_index]
+# --report loads a pre-built (already-verified) index instead of re-analyzing. When
+# set, we skip analysis, verification, and re-indexing, but still flow into the shared
+# classify / confidence / render pipeline below so a cached index can be classified.
+from_index = !options[:load_index].nil?
+
+results = if from_index
   index = SorbetDeadcode::Index.load(options[:load_index])
   index = index.filter_paths(options[:filter_paths]) unless options[:filter_paths].empty?
   index = index.intersect(SorbetDeadcode::Index.load(options[:intersect_index])) if options[:intersect_index]
-  results = index.dead_definitions
-  $stderr.puts "Loaded #{results.size} dead code candidates from #{options[:load_index]}."
-
-  if results.empty?
-    $stderr.puts "No dead code found."
-    exit 0
-  end
-
-  $stderr.puts "Found #{results.size} dead code candidates:\n\n"
-  results.sort_by(&:full_name).each do |defn|
-    line = "  #{defn.kind} #{defn.full_name}\n    #{defn.location}"
-    puts line
-  end
-  puts "\n#{results.size} dead code candidates found."
-  exit 1
-end
-
-results = if options[:hybrid]
+  $stderr.puts "Loaded #{index.dead_definitions.size} dead code candidates from #{options[:load_index]}."
+  index.dead_definitions
+elsif options[:hybrid]
   SorbetDeadcode.analyze_hybrid(
     project_root: options[:project_root],
     paths: options[:paths],
@@ -181,7 +170,7 @@ else
   candidates
 end
 
-if options[:verify] && !results.empty?
+if !from_index && options[:verify] && !results.empty?
   verifier = SorbetDeadcode::Verifier::RipgrepVerifier.new(
     project_root: options[:project_root],
     exclude_paths: options[:exclude_paths],
@@ -190,7 +179,7 @@ if options[:verify] && !results.empty?
 end
 
 # --index: save the result to a JSON file for later --report / --intersect use
-if options[:output_index]
+if !from_index && options[:output_index]
   index = SorbetDeadcode::Index.new(
     dead_definitions: results,
     paths: options[:paths],
@@ -200,8 +189,9 @@ if options[:output_index]
   $stderr.puts "Index written to #{options[:output_index]} (#{results.size} candidates)."
 end
 
-# --intersect: filter to definitions that also appear in another index
-if options[:intersect_index]
+# --intersect: filter to definitions that also appear in another index.
+# (In --report mode the intersection was already applied while loading the index.)
+if !from_index && options[:intersect_index]
   other = SorbetDeadcode::Index.load(options[:intersect_index])
   results = SorbetDeadcode::Index.new(dead_definitions: results, paths: options[:paths])
               .intersect(other)
