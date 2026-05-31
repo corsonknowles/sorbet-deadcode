@@ -88,33 +88,6 @@ sorbet-deadcode lib/ --reference-root .
 sorbet-deadcode packs/my_pack/ --reference-root packs/ --project-root .
 ```
 
-### Index & Report (analyze once, slice many times)
-
-A full-repo analysis can take minutes. Run it **once**, save the result to a JSON
-index, then `--report` against that index instantly — optionally filtering to specific
-paths or annotating with `--classify` / `--confidence` without re-analyzing:
-
-```bash
-# Analyze the whole repo once and save a reusable index
-sorbet-deadcode . --reference-root . --index tmp/deadcode.json
-
-# Report instantly from the cached index (already verified)
-sorbet-deadcode --report tmp/deadcode.json
-
-# Slice the cached index to one pack
-sorbet-deadcode --report tmp/deadcode.json packs/my_pack/
-
-# Classify the cached index (confidence, ref counts, suggested actions)
-sorbet-deadcode --report tmp/deadcode.json --classify
-
-# Cross-compare the cached index against another tool's index (e.g. Spoom)
-sorbet-deadcode --report tmp/deadcode.json --intersect tmp/spoom.json
-```
-
-`--report` skips analysis and verification (the index is already verified) but still
-flows through classification and confidence scoring, so the index → classify workflow
-works end to end.
-
 ### False-Positive Handling
 
 `sorbet-deadcode` detects and suppresses several classes of dynamic dispatch that

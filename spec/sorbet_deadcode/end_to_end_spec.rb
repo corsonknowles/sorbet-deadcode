@@ -1,34 +1,9 @@
 # frozen_string_literal: true
 
 require_relative "../spec_helper"
-require "tempfile"
-require "shellwords"
 
 module SorbetDeadcode
   class EndToEndSpec < Minitest::Test
-    EXE = File.expand_path("../../exe/sorbet-deadcode", __dir__)
-    LIB = File.expand_path("../../lib", __dir__)
-
-    # --report must flow into the confidence/classify pipeline (#37): a cached index
-    # should be annotatable without re-analyzing. --confidence needs no ripgrep, so it
-    # is a stable proxy for "the report path no longer returns before rendering."
-    def test_report_index_supports_confidence_annotation
-      results = SorbetDeadcode.analyze(File.join(FIXTURES_PATH, "app"))
-      refute_empty results, "fixture analysis should surface dead code"
-
-      Tempfile.create(["deadcode", ".json"]) do |f|
-        Index.new(dead_definitions: results, paths: [FIXTURES_PATH]).write(f.path)
-
-        output = `#{Shellwords.escape(RbConfig.ruby)} -I #{Shellwords.escape(LIB)} #{Shellwords.escape(EXE)} --report #{Shellwords.escape(f.path)} --confidence 2>&1`
-
-        assert_includes output, "Loaded #{results.size} dead code candidates"
-        # Confidence tier tag ([high]/[medium]/[low]) only appears via the shared
-        # render path that --report previously short-circuited.
-        assert_match(/\[(high|medium|low)\]/, output, "expected a confidence tier in report output")
-      end
-    end
-
-
     def test_app_only_analysis
       # Analyze only app code (no specs)
       results = SorbetDeadcode.analyze(

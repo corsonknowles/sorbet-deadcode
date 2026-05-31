@@ -9,11 +9,6 @@
   now snapshot/restored around each method body, matching local-variable scoping.
 
 ### Changed
-- **`--report` now combines with `--classify` / `--confidence`** (#37) — the load-index
-  branch previously returned before the classify/confidence rendering, so a cached index
-  could only be printed plainly. The report path now flows through the shared pipeline
-  (skipping analysis, verification, and re-indexing), completing the index → classify
-  workflow.
 - **Dropped the `sorbet-runtime` runtime dependency** (#34) — the tool parses Sorbet
   `sig` annotations as source text via Prism and never calls the sorbet-runtime API, so
   the dependency was dead weight on installs. `prism` is now the only runtime dependency.
