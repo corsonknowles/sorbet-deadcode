@@ -16,15 +16,18 @@ module SorbetDeadcode
     # of a `class << self` method as its fully-qualified constant, which matches the receiver
     # written in the YAML.)
     class YamlRefiner
+      include Reportable
       METHOD_KINDS = %i[method attr_reader attr_writer].freeze
+      REASON = :yaml
 
       def initialize(project_root, keys: Scanners::YamlScanner::DEFAULT_KEYS,
                      bare_keys: Scanners::YamlScanner::DEFAULT_BARE_KEYS,
-                     globs: Scanners::YamlScanner::DEFAULT_GLOBS)
+                     globs: Scanners::YamlScanner::DEFAULT_GLOBS, mode: :exclude)
         @project_root = File.expand_path(project_root)
         @keys = keys
         @bare_keys = bare_keys
         @globs = globs
+        @mode = mode
       end
 
       # @param dead_candidates [Array<Definition>]
@@ -37,7 +40,7 @@ module SorbetDeadcode
           return dead_candidates
         end
 
-        dead_candidates.reject { |d| yaml_referenced?(d, referenced) }
+        resolve(dead_candidates) { |d| yaml_referenced?(d, referenced) }
       end
 
       private

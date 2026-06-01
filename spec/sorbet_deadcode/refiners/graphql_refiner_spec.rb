@@ -89,6 +89,28 @@ module SorbetDeadcode
         assert_equal [unrelated], refiner.refine([unrelated])
       end
 
+      # ---- #61: report mode (tag instead of exclude) -----------------------
+
+      def test_report_mode_tags_kept_by_instead_of_removing
+        write_graphql("app/graphql/schema.graphql", "type User { fullName: String }\n")
+        defn = make_def("full_name")
+
+        refined = GraphqlRefiner.new(@dir, mode: :report).refine([defn])
+
+        assert_equal [defn], refined, "report mode keeps the candidate"
+        assert_equal :graphql_sdl, defn.kept_by
+      end
+
+      def test_report_mode_leaves_unmatched_candidate_untagged
+        write_graphql("app/graphql/schema.graphql", "type User { fullName: String }\n")
+        defn = make_def("genuinely_dead")
+
+        refined = GraphqlRefiner.new(@dir, mode: :report).refine([defn])
+
+        assert_equal [defn], refined
+        assert_nil defn.kept_by
+      end
+
       # ---- integration: fixture .graphql + Ruby resolver --------------------
 
       def test_full_pipeline_keeps_resolver_method_alive

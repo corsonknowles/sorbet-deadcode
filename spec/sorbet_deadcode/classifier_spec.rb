@@ -28,6 +28,18 @@ module SorbetDeadcode
       Classifier.new(project_root: @dir).classify([candidate]).first
     end
 
+    def test_kept_by_marks_low_confidence_review_with_source_flag
+      path = write("app/foo.rb", "class Foo\n  def kept_method\n  end\nend\n")
+      candidate = defn("kept_method", location: "#{path}:2")
+      candidate.kept_by = :graphql_sdl
+
+      result = classify_one(candidate)
+
+      assert_equal Analyzer::Confidence::LOW, result.confidence
+      assert_equal :review, result.suggested_action
+      assert_includes result.flags, :"kept_by:graphql_sdl"
+    end
+
     def test_no_external_references_is_safe_delete_high
       path = write("app/foo.rb", "class Foo\n  def truly_dead\n  end\nend\n")
       result = classify_one(defn("truly_dead", location: "#{path}:2"))

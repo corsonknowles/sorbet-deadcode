@@ -72,6 +72,14 @@ module SorbetDeadcode
       confidence = confidence_for(external_count, flags)
       action = action_for(external_count, production_ruby, spec_refs, non_ruby, flags)
 
+      # A refiner in :report mode kept this candidate (referenced only from a non-Ruby
+      # source it scans). Surface why, and downgrade to a low-confidence review.
+      if definition.kept_by
+        flags = [:"kept_by:#{definition.kept_by}", *flags]
+        confidence = Analyzer::Confidence::LOW
+        action = :review
+      end
+
       Result.new(
         definition: definition,
         confidence: confidence,

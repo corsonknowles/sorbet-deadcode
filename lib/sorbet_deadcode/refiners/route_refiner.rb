@@ -13,8 +13,12 @@ module SorbetDeadcode
     # - Route scanning is fast and can be re-run against a cached index.
     # - Other non-Ruby scanners (YAML, ERB, GraphQL) follow the same pattern.
     class RouteRefiner
-      def initialize(project_root)
+      include Reportable
+      REASON = :route
+
+      def initialize(project_root, mode: :exclude)
         @project_root = File.expand_path(project_root)
+        @mode = mode
       end
 
       # Filter dead_candidates, removing any that are reachable from routes.
@@ -27,7 +31,7 @@ module SorbetDeadcode
         routed = build_routed_set
         return dead_candidates if routed.empty?
 
-        dead_candidates.reject { |d| routed_alive?(d, routed) }
+        resolve(dead_candidates) { |d| routed_alive?(d, routed) }
       end
 
       private
