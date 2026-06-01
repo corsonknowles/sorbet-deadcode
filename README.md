@@ -40,12 +40,34 @@ sorbet-deadcode .
 # Scope verification/refiners to the cwd instead of the git root (or outside a repo)
 sorbet-deadcode packs/my_pack/ --isolated
 
-# Exclude specs from definitions (non-production dead code only)
-sorbet-deadcode --no-specs packs/my_pack/
+# Only print the auto-deletable candidates
+sorbet-deadcode packs/my_pack/ --only safe_delete
 
-# Skip the ripgrep verification pass (faster, more false positives)
-sorbet-deadcode --no-verify packs/my_pack/
+# Old-style flat list (no confidence/action tiers); --no-verify implies --plain
+sorbet-deadcode packs/my_pack/ --plain
 ```
+
+### Default output: confidence/action tiers
+
+By default, each candidate is annotated with a **suggested action** and **confidence tier**
+so the output is safe to act on programmatically (auto-delete the high-confidence ones,
+route the rest to review). Live candidates (action `keep`) are hidden.
+
+```
+  [safe_delete] [high] method Widget#unused_helper (refs=0)
+    app/models/widget.rb:42
+  [delete_with_spec] [medium] class Widget::LegacyThing (refs=1 flags=spec_only)
+    app/models/widget/legacy_thing.rb:3
+```
+
+| Action | Meaning |
+|--------|---------|
+| `safe_delete` | No references outside the definition — safe to remove |
+| `delete_with_spec` | Referenced only from specs/tests — remove along with its spec |
+| `review` | Referenced from non-Ruby files or an inline-constant side effect — needs a human |
+| `keep` | Real production references exist — not dead (hidden unless `--only keep`) |
+
+Use `--only ACTION` to filter (e.g. `--only safe_delete`), or `--plain` for a flat list.
 
 ### Ripgrep Verification (Default)
 

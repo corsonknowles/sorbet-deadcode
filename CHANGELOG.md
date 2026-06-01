@@ -3,6 +3,14 @@
 ## Unreleased
 
 ### Changed
+- **Default output is now the classified, confidence/action-tiered view** (#62) — a no-flag
+  run annotates each candidate with a suggested action (`safe_delete` / `delete_with_spec` /
+  `review`) and confidence tier (`high` / `medium` / `low`), hiding live (`keep`) candidates.
+  This makes the default safe to act on programmatically (auto-delete `safe_delete`/`high`,
+  route the rest to review) and surfaces spec-only candidates that the previous verify-only
+  default silently dropped. Classification runs over the pre-verify candidates (its own
+  ripgrep pass supersedes the standalone verify). Use `--plain` for the old flat list;
+  `--no-verify` (no ripgrep) implies `--plain`. `--only ACTION` no longer needs `--classify`.
 - **Project root now defaults to the git toplevel** (#62) — previously `--project-root`
   defaulted to the current directory, so running from inside a pack/subdirectory scoped
   ripgrep verification and the non-Ruby refiners to that subtree and reported
