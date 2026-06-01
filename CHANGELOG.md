@@ -3,6 +3,9 @@
 ## Unreleased
 
 ### Fixed
+- **`Index#intersect` is now owner-precise** (#33) — it keyed candidates on `[name, kind]`,
+  so two unrelated `#foo` methods on different classes counted as the same definition,
+  inflating the cross-tool agreement set. It now keys on `[full_name, kind]`.
 - **`Definition` exposes `file` and `line` as fields** (#39) — the `"file:line"` location was
   parsed via `location.split(":").first` in the analyzer, classifier, refiners, and LSP
   finders, which is brittle on Windows drive-letter paths (`C:/x.rb:12`) and any path
