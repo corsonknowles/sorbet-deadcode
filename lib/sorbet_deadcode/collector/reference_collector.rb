@@ -489,6 +489,8 @@ module SorbetDeadcode
       # `builds :thing` → `build_thing` method called by the mutation framework.
       # `argument :x, prepare: :method` → `method` called when resolving the input.
       # `field :x, method: :method_name` / `argument :x, method: :method_name`.
+      # `argument :foo_id, loads: SomeType` → graphql-ruby calls a `load_foo` loader
+      #   (the argument name with a trailing `_id` stripped, prefixed with `load_`).
       def collect_graphql_references(node, location, method_name:)
         if method_name == "builds"
           node.arguments.arguments.each do |arg|
@@ -503,20 +505,31 @@ module SorbetDeadcode
           return
         end
 
-        # argument / field: look for `prepare:` and `method:` keyword options.
-        node.arguments.arguments.each do |arg|
+        args = node.arguments.arguments
+        first = args.first
+        arg_name = first.is_a?(Prism::SymbolNode) ? first.unescaped : nil
+
+        # argument / field: look for `prepare:`, `method:`, and `loads:` keyword options.
+        args.each do |arg|
           next unless arg.is_a?(Prism::KeywordHashNode)
 
           arg.elements.each do |assoc|
             next unless assoc.is_a?(Prism::AssocNode)
 
-            key = assoc.key.slice.delete_suffix(":")
-            next unless %w[prepare method].include?(key)
+            key = assoc.key
+            next unless key.is_a?(Prism::SymbolNode)
 
-            val = assoc.value
-            next unless val.is_a?(Prism::SymbolNode)
+            case key.unescaped
+            when "prepare", "method"
+              val = assoc.value
+              @references << Reference.new(name: val.unescaped, location: location, kind: :method) if val.is_a?(Prism::SymbolNode)
+            when "loads"
+              # `argument :foo_id, loads: X` → `load_foo` is invoked by graphql-ruby
+              # to resolve the argument; the `_id` suffix is stripped by convention.
+              next unless arg_name
 
-            @references << Reference.new(name: val.unescaped, location: location, kind: :method)
+              @references << Reference.new(name: "load_#{arg_name.delete_suffix('_id')}", location: location, kind: :method)
+            end
           end
         end
       end
