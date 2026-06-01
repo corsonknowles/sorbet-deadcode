@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+- **`T::Enum` values are no longer reported dead** (#70) — enum values declared as
+  `Active = new('active')` inside a `T::Enum` subclass's `enums do` block are reached via
+  `.values` / `.deserialize(<string>)` / serialization, not by their Ruby constant, so they
+  were false positives. The collector no longer records them as definitions. Plain constants
+  inside an enum class, and `= new(...)` assignments outside a `T::Enum`, are unaffected.
+  Handles both `< T::Enum` and `< ::T::Enum`.
+
 ### Changed
 - **Project root now defaults to the git toplevel** (#62) — previously `--project-root`
   defaulted to the current directory, so running from inside a pack/subdirectory scoped

@@ -12,6 +12,7 @@ module SorbetDeadcode
         @file_path = file_path
         @definitions = []
         @namespace_stack = []
+        @enum_stack = [] # parallel to @namespace_stack: is each enclosing class a T::Enum?
       end
 
       def visit_class_node(node)
@@ -24,7 +25,9 @@ module SorbetDeadcode
           location: format_location(node.location),
         )
         @namespace_stack.push(name)
+        @enum_stack.push(t_enum_subclass?(node))
         super
+        @enum_stack.pop
         @namespace_stack.pop
       end
 
@@ -38,7 +41,9 @@ module SorbetDeadcode
           location: format_location(node.location),
         )
         @namespace_stack.push(name)
+        @enum_stack.push(false)
         super
+        @enum_stack.pop
         @namespace_stack.pop
       end
 
@@ -56,6 +61,11 @@ module SorbetDeadcode
       end
 
       def visit_constant_write_node(node)
+        # T::Enum values (`Active = new('active')` inside `enums do`) are reached via
+        # `.values` / `.deserialize(<string>)` / serialization, not by their Ruby constant,
+        # so they must not be reported dead. Skip recording them as definitions.
+        return super if enum_value_definition?(node)
+
         name = node.name.to_s
         @definitions << Definition.new(
           name: name,
@@ -113,6 +123,19 @@ module SorbetDeadcode
       end
 
       private
+
+      # `class Foo < T::Enum` (also matches the fully-qualified `< ::T::Enum`).
+      def t_enum_subclass?(node)
+        node.superclass&.slice&.delete_prefix("::") == "T::Enum"
+      end
+
+      # A constant assigned a bare `new(...)` inside a T::Enum subclass — i.e. an enum value.
+      def enum_value_definition?(node)
+        return false unless @enum_stack.last
+        return false unless node.value.is_a?(Prism::CallNode)
+
+        node.value.receiver.nil? && node.value.name.to_s == "new"
+      end
 
       def collect_accessors(node, kind)
         return unless node.arguments
