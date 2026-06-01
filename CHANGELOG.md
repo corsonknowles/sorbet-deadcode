@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Changed
+- **GraphQL SDL refiner is now directory-scoped** (#60) — each `.graphql` document's field
+  names only keep resolver methods alive when those methods are defined at or below the
+  document's directory (its subgraph root). Previously the field names from every schema
+  were pooled into one repo-wide name set, so a generic field (`id`, `name`, `status`,
+  `nodes`) in one subgraph could mask a same-named method in an unrelated directory. Legit
+  per-subgraph suppression is unchanged.
 - **Project root now defaults to the git toplevel** (#62) — previously `--project-root`
   defaulted to the current directory, so running from inside a pack/subdirectory scoped
   ripgrep verification and the non-Ruby refiners to that subtree and reported
