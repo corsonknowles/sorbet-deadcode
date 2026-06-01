@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Fixed
+- **`T::Enum` values are no longer reported dead** (#70) — enum values declared as
+  `Active = new('active')` inside a `T::Enum` subclass's `enums do` block are reached via
+  `.values` / `.deserialize(<string>)` / serialization, not by their Ruby constant, so they
+  were false positives. The collector no longer records them as definitions. Plain constants
+  inside an enum class, and `= new(...)` assignments outside a `T::Enum`, are unaffected.
+  Handles both `< T::Enum` and `< ::T::Enum`.
+- **RouteScanner now recognizes `controller:`/`action:` and hash-rocket route forms** (#67) —
+  previously only `to: 'controller#action'` was parsed, so routes written as
+  `get '/x', controller: 'admin/widgets', action: 'show'`, `get :show, controller: :widgets`,
+  or `get '/x' => 'widgets#index'` (common in `draw`-ed split route files) were ignored and
+  their controllers/actions reported dead. All three forms now emit the action + controller
+  references.
+
 ### Changed
 - **GraphQL SDL refiner is now directory-scoped** (#60) — each `.graphql` document's field
   names only keep resolver methods alive when those methods are defined at or below the
@@ -9,6 +23,14 @@
   were pooled into one repo-wide name set, so a generic field (`id`, `name`, `status`,
   `nodes`) in one subgraph could mask a same-named method in an unrelated directory. Legit
   per-subgraph suppression is unchanged.
+- **Default output is now the classified, confidence/action-tiered view** (#62) — a no-flag
+  run annotates each candidate with a suggested action (`safe_delete` / `delete_with_spec` /
+  `review`) and confidence tier (`high` / `medium` / `low`), hiding live (`keep`) candidates.
+  This makes the default safe to act on programmatically (auto-delete `safe_delete`/`high`,
+  route the rest to review) and surfaces spec-only candidates that the previous verify-only
+  default silently dropped. Classification runs over the pre-verify candidates (its own
+  ripgrep pass supersedes the standalone verify). Use `--plain` for the old flat list;
+  `--no-verify` (no ripgrep) implies `--plain`. `--only ACTION` no longer needs `--classify`.
 - **Project root now defaults to the git toplevel** (#62) — previously `--project-root`
   defaulted to the current directory, so running from inside a pack/subdirectory scoped
   ripgrep verification and the non-Ruby refiners to that subtree and reported

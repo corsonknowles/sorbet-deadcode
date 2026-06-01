@@ -72,7 +72,7 @@ module SorbetDeadcode
 
         case name
         when *ROUTE_METHODS
-          collect_to_reference(node, location)
+          collect_route_reference(node, location)
         when "resources", "resource"
           collect_resources_references(node, location, singular: name == "resource")
         when "namespace"
@@ -91,27 +91,45 @@ module SorbetDeadcode
 
       private
 
-      # Extract `to: 'controller#action'` from an HTTP verb call.
-      def collect_to_reference(node, location)
+      # Extract the controller/action a route verb maps to. Handles both forms:
+      #   get '/x', to: 'admin/widgets#index'
+      #   get '/x', controller: 'admin/widgets', action: 'index'   (string or symbol)
+      #   get :index, controller: :widgets                          (action as 1st arg)
+      def collect_route_reference(node, location)
         return unless node.arguments
 
+        to = controller = action = nil
         node.arguments.arguments.each do |arg|
-          next unless arg.is_a?(Prism::KeywordHashNode)
+          next unless arg.is_a?(Prism::KeywordHashNode) || arg.is_a?(Prism::HashNode)
 
           arg.elements.each do |assoc|
             next unless assoc.is_a?(Prism::AssocNode)
-            next unless assoc.key.slice.delete_suffix(":") == "to"
 
-            val = assoc.value
-            to_string = case val
-                        when Prism::StringNode then val.unescaped
-                        when Prism::SymbolNode then val.unescaped
-                        end
-            next unless to_string&.include?("#")
-
-            emit_to_reference(to_string, location)
+            case assoc.key.slice.delete_suffix(":")
+            when "to" then to = symbol_or_string(assoc.value)
+            when "controller" then controller = symbol_or_string(assoc.value)
+            when "action" then action = symbol_or_string(assoc.value)
+            else
+              # Hash-rocket form: `get '/path' => 'controller#action'` (string URL key).
+              value = symbol_or_string(assoc.value)
+              to ||= value if value&.include?("#")
+            end
           end
         end
+
+        if to&.include?("#")
+          emit_to_reference(to, location)
+        elsif controller
+          # `get :show, controller: :widgets` — action defaults to the leading symbol arg.
+          action ||= leading_symbol_arg(node)
+          emit_controller_action(controller_class_name(controller, namespace: @namespace_stack), action, location)
+        end
+      end
+
+      # The first positional argument, when it's a symbol (the action shorthand).
+      def leading_symbol_arg(node)
+        first = node.arguments.arguments.first
+        first.unescaped if first.is_a?(Prism::SymbolNode)
       end
 
       # `resources :widgets` → references for all CRUD actions on WidgetsController.
@@ -222,24 +240,18 @@ module SorbetDeadcode
         controller_part, action = to_string.split("#", 2)
         return unless action
 
-        class_name = controller_class_name(controller_part, namespace: @namespace_stack)
-        @references << Reference.new(
-          name: action,
-          location: location,
-          kind: :method,
-          receiver_type: class_name,
-        )
-        # Also emit the controller class as a constant reference so it's not reported dead.
-        @references << Reference.new(
-          name: class_name.split("::").last,
-          location: location,
-          kind: :constant,
-        )
-        @references << Reference.new(
-          name: class_name,
-          location: location,
-          kind: :constant,
-        )
+        emit_controller_action(controller_class_name(controller_part, namespace: @namespace_stack), action, location)
+      end
+
+      # Emit a constant reference for the controller class (short + fully-qualified, so it's
+      # kept alive regardless of how the analyzer named it) and, when known, a typed method
+      # reference for the action.
+      def emit_controller_action(class_name, action, location)
+        @references << Reference.new(name: class_name.split("::").last, location: location, kind: :constant)
+        @references << Reference.new(name: class_name, location: location, kind: :constant)
+        return unless action
+
+        @references << Reference.new(name: action, location: location, kind: :method, receiver_type: class_name)
       end
 
       # Convert `'admin/widgets'` + namespace stack `["billing"]` →

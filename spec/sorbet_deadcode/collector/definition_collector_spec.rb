@@ -208,6 +208,62 @@ module SorbetDeadcode
         assert_equal ["real"], names
       end
 
+      def test_t_enum_values_are_not_recorded_as_definitions
+        defs = collect(<<~RUBY)
+          class Status < T::Enum
+            enums do
+              Active = new('active')
+              Inactive = new('inactive')
+            end
+          end
+        RUBY
+
+        const_names = defs.select { |d| d.kind == :constant }.map(&:name)
+        # Enum values are reached via .values/.deserialize, not the Ruby constant.
+        refute_includes const_names, "Active"
+        refute_includes const_names, "Inactive"
+        # The enum class itself is still collected.
+        assert_includes defs.map(&:full_name), "Status"
+      end
+
+      def test_t_enum_values_with_fully_qualified_superclass
+        defs = collect(<<~RUBY)
+          class Status < ::T::Enum
+            enums do
+              Ok = new('ok')
+            end
+          end
+        RUBY
+
+        refute_includes defs.select { |d| d.kind == :constant }.map(&:name), "Ok"
+      end
+
+      def test_plain_constants_inside_t_enum_are_still_recorded
+        defs = collect(<<~RUBY)
+          class Status < T::Enum
+            DEFAULT_LABEL = 'n/a'
+            enums do
+              Active = new('active')
+            end
+          end
+        RUBY
+
+        const_names = defs.select { |d| d.kind == :constant }.map(&:name)
+        assert_includes const_names, "DEFAULT_LABEL"
+        refute_includes const_names, "Active"
+      end
+
+      def test_new_assigned_constant_outside_enum_is_recorded
+        # `= new(...)` only signals an enum value inside a T::Enum subclass.
+        defs = collect(<<~RUBY)
+          class Widget
+            DEFAULT = new
+          end
+        RUBY
+
+        assert_includes defs.select { |d| d.kind == :constant }.map(&:name), "DEFAULT"
+      end
+
       private
 
       def collect(source)
