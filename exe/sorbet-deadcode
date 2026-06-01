@@ -137,6 +137,13 @@ if mode_count > 1
   exit 1
 end
 
+# --reference-root is only consumed by the default Prism analyze path; the LSP/hybrid/
+# file-table finders don't accept it yet. Warn instead of silently ignoring it.
+if options[:reference_root] && mode_count.positive?
+  $stderr.puts "[sorbet-deadcode] --reference-root is only applied in the default mode; " \
+               "ignoring it for --lsp/--hybrid/--file-table."
+end
+
 # --report loads a pre-built (already-verified) index instead of re-analyzing. When
 # set, we skip analysis, verification, and re-indexing, but still flow into the shared
 # classify / confidence / render pipeline below so a cached index can be classified.
@@ -169,29 +176,24 @@ elsif options[:lsp]
     parallel: options[:parallel],
   )
 else
-  candidates = SorbetDeadcode.analyze(
+  SorbetDeadcode.analyze(
     options[:paths],
     exclude_paths: options[:exclude_paths],
     reference_paths: options[:reference_root],
   )
+end
 
-  unless options[:no_routes]
-    candidates = SorbetDeadcode::Refiners::RouteRefiner.new(options[:project_root]).refine(candidates)
-  end
-
-  unless options[:no_yaml]
-    candidates = SorbetDeadcode::Refiners::YamlRefiner.new(options[:project_root]).refine(candidates)
-  end
-
-  unless options[:no_erb]
-    candidates = SorbetDeadcode::Refiners::ErbRefiner.new(options[:project_root]).refine(candidates)
-  end
-
-  unless options[:no_rabl]
-    candidates = SorbetDeadcode::Refiners::RablRefiner.new(options[:project_root]).refine(candidates)
-  end
-
-  candidates
+# Apply the non-Ruby reference refiners to EVERY analysis mode's results, not just the
+# default Prism path. Without this, routed controllers and template-/config-referenced
+# methods resurface as false positives under --lsp/--hybrid/--file-table. (--report
+# results were already refined when the index was built, so skip them here.)
+unless from_index
+  refiners = []
+  refiners << SorbetDeadcode::Refiners::RouteRefiner.new(options[:project_root]) unless options[:no_routes]
+  refiners << SorbetDeadcode::Refiners::YamlRefiner.new(options[:project_root]) unless options[:no_yaml]
+  refiners << SorbetDeadcode::Refiners::ErbRefiner.new(options[:project_root]) unless options[:no_erb]
+  refiners << SorbetDeadcode::Refiners::RablRefiner.new(options[:project_root]) unless options[:no_rabl]
+  results = refiners.reduce(results) { |candidates, refiner| refiner.refine(candidates) }
 end
 
 if !from_index && options[:verify] && !results.empty?
