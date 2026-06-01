@@ -22,9 +22,12 @@ module SorbetDeadcode
     # Matches files under spec/ or test/ directories, or *_spec.rb / *_test.rb.
     SPEC_PATH = %r{(?:^|/)(?:spec|test)/|_(?:spec|test)\.rb$}
 
-    def initialize(project_root:, exclude_paths: [])
+    def initialize(project_root:, exclude_paths: [], recent_within: nil)
       @project_root = File.expand_path(project_root)
       @exclude_paths = exclude_paths
+      # When set (seconds), candidates whose definition line was introduced within the
+      # window are flagged :recently_added and routed to review (issue #19).
+      @recency = recent_within && Git::Recency.new(@project_root, recent_within)
     end
 
     # @param candidates [Array<Definition>]
@@ -76,6 +79,14 @@ module SorbetDeadcode
       # source it scans). Surface why, and downgrade to a low-confidence review.
       if definition.kept_by
         flags = [:"kept_by:#{definition.kept_by}", *flags]
+        confidence = Analyzer::Confidence::LOW
+        action = :review
+      end
+
+      # Recently-introduced definitions are risky to delete (possible in-flight work);
+      # flag and route to review so they're excluded from the safe_delete actionable list.
+      if @recency&.recently_added?(definition)
+        flags = [:recently_added, *flags]
         confidence = Analyzer::Confidence::LOW
         action = :review
       end

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+- **Recently-added code is flagged and routed to review** (#19, completes #62) — definitions
+  introduced within a configurable git window (default **30 days**) are the riskiest to
+  delete (possible in-flight work), so the Classifier now flags them `:recently_added`,
+  downgrades them to low confidence, and routes them to `review` — keeping them out of the
+  `safe_delete` actionable list. Introduction date is determined per definition via git line
+  history (`git log -L`), degrading gracefully outside a checkout / for untracked files.
+  Configure with `--max-age` (`30d` / `2w` / `1m`); `--max-age 0` disables.
+
 ### Fixed
 - **YAML class-registry configs are now recognized** (#76) — `YamlScanner` only matched
   `key: Module::Class.method` values, so classes listed in registry configs (loaded via
