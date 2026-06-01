@@ -58,7 +58,7 @@ module SorbetDeadcode
     end
 
     def classify_one(definition, files_hash)
-      defn_abs = File.expand_path(definition.location.split(":").first.to_s)
+      defn_abs = File.expand_path(definition.file.to_s)
       external = files_hash.reject { |path, _| File.expand_path(path) == defn_abs }
 
       total = files_hash.values.sum

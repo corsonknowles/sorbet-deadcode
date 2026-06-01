@@ -77,11 +77,10 @@ module SorbetDeadcode
         definitions.each_with_index do |defn, index|
           $stderr.print "\rChecking definitions: #{index + 1}/#{total}"
 
-          location = defn.location
-          file_path, line_str = location.split(":")
-          next unless file_path && line_str
+          file_path = defn.file
+          next unless file_path && defn.line
 
-          line = line_str.to_i - 1
+          line = defn.line - 1
           column = detect_column(file_path, line, defn)
 
           refs = client.references(file_path, line, column)
@@ -102,11 +101,10 @@ module SorbetDeadcode
 
         definitions.each_slice(@parallel) do |batch|
           request_ids = batch.map do |defn|
-            location = defn.location
-            file_path, line_str = location.split(":")
-            next nil unless file_path && line_str
+            file_path = defn.file
+            next nil unless file_path && defn.line
 
-            line = line_str.to_i - 1
+            line = defn.line - 1
             column = detect_column(file_path, line, defn)
             begin
               client.async_references(file_path, line, column)
@@ -129,9 +127,8 @@ module SorbetDeadcode
               next
             end
 
-            location = defn.location
-            file_path, line_str = location.split(":")
-            line = line_str.to_i - 1
+            file_path = defn.file
+            line = defn.line - 1
 
             live_refs = filter_references(refs, file_path, line)
             dead << defn if live_refs.empty?

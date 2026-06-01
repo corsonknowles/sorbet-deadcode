@@ -4,7 +4,8 @@ module SorbetDeadcode
   class Definition
     KINDS = %i[method class module constant attr_reader attr_writer].freeze
 
-    attr_reader :name, :full_name, :kind, :location, :owner_name, :co_located_names, :superclass_name
+    attr_reader :name, :full_name, :kind, :location, :owner_name, :co_located_names, :superclass_name,
+                :file, :line
 
     # Optional metadata (not part of identity): set by a refiner in :report mode to record
     # that this candidate was kept alive only by a non-Ruby reference of the given source
@@ -25,6 +26,12 @@ module SorbetDeadcode
       @full_name = full_name
       @kind = kind
       @location = location
+      # Split into file + line once, here, instead of `location.split(":")` scattered across
+      # consumers. rpartition splits on the LAST colon, so Windows drive-letter paths
+      # (`C:/x.rb:12`) and any path containing a colon parse correctly.
+      file, sep, line = location.to_s.rpartition(":")
+      @file = sep.empty? ? location : file
+      @line = sep.empty? || line.empty? ? nil : line.to_i
       @owner_name = owner_name
       @co_located_names = co_located_names
       @superclass_name = superclass_name

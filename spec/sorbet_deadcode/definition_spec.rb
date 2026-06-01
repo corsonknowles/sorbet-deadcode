@@ -42,5 +42,30 @@ module SorbetDeadcode
       defn = Definition.new(name: "X", full_name: "X", kind: :constant, location: "f:1")
       assert_equal [], defn.co_located_names
     end
+
+    def test_parses_location_into_file_and_line
+      defn = Definition.new(name: "X", full_name: "X", kind: :method, location: "app/models/widget.rb:42")
+      assert_equal "app/models/widget.rb", defn.file
+      assert_equal 42, defn.line
+    end
+
+    def test_file_handles_windows_drive_letter_path
+      # rpartition splits on the LAST colon, so a drive-letter colon stays in the path.
+      defn = Definition.new(name: "X", full_name: "X", kind: :method, location: "C:/src/widget.rb:7")
+      assert_equal "C:/src/widget.rb", defn.file
+      assert_equal 7, defn.line
+    end
+
+    def test_location_without_colon_keeps_file_and_nil_line
+      defn = Definition.new(name: "X", full_name: "X", kind: :method, location: "symbol-table")
+      assert_equal "symbol-table", defn.file
+      assert_nil defn.line
+    end
+
+    def test_location_with_trailing_colon_has_nil_line
+      defn = Definition.new(name: "X", full_name: "X", kind: :method, location: "f.rb:")
+      assert_equal "f.rb", defn.file
+      assert_nil defn.line
+    end
   end
 end
