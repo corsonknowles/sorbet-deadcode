@@ -4,7 +4,7 @@ module SorbetDeadcode
   class Definition
     KINDS = %i[method class module constant attr_reader attr_writer].freeze
 
-    attr_reader :name, :full_name, :kind, :location, :owner_name, :co_located_names
+    attr_reader :name, :full_name, :kind, :location, :owner_name, :co_located_names, :superclass_name
 
     # Optional metadata (not part of identity): set by a refiner in :report mode to record
     # that this candidate was kept alive only by a non-Ruby reference of the given source
@@ -14,7 +14,11 @@ module SorbetDeadcode
     # co_located_names: names of other definitions whose source is nested inside
     # this definition (e.g. `PARENT = [CHILD = 1]`). Removing this definition would
     # also remove them, so it must not be reported dead while any of them is alive.
-    def initialize(name:, full_name:, kind:, location:, owner_name: nil, co_located_names: [])
+    # superclass_name: for a class definition, the (short) name of its direct superclass as
+    # written (e.g. `class Foo < Base` => "Base"). Used to keep subclasses of a base that is
+    # reflected over via `.descendants` / `.subclasses` alive.
+    def initialize(name:, full_name:, kind:, location:, owner_name: nil, co_located_names: [],
+                   superclass_name: nil)
       raise ArgumentError, "unknown kind: #{kind}" unless KINDS.include?(kind)
 
       @name = name
@@ -23,6 +27,7 @@ module SorbetDeadcode
       @location = location
       @owner_name = owner_name
       @co_located_names = co_located_names
+      @superclass_name = superclass_name
       @kept_by = nil
     end
 

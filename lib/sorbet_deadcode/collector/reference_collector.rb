@@ -144,6 +144,7 @@ module SorbetDeadcode
       end
 
       ITERATION_METHODS = %w[each map flat_map collect each_with_object select filter reject find detect].to_set.freeze
+      SUBCLASS_DISCOVERY_METHODS = %w[descendants subclasses].to_set.freeze
 
       def visit_call_node(node)
         name = node.name.to_s
@@ -153,6 +154,10 @@ module SorbetDeadcode
         # foo?/has_foo? without the literal name appearing. Emit those predicate
         # references so methods tested only through a matcher aren't reported dead.
         collect_predicate_matcher_references(name, location)
+
+        # `Base.descendants` / `Base.subclasses` discovers every subclass at runtime, so
+        # those subclasses must not be reported dead even though nothing names them.
+        collect_subclass_discovery_reference(node, name, location)
 
         # Keyword mass-assignment (`Model.new(foo: x)`, `build(:m, foo: x)`, etc.) invokes
         # the `foo=` setter; emit those writer references so set-only attributes aren't dead.
@@ -399,6 +404,34 @@ module SorbetDeadcode
         predicate_matcher_names(name).each do |predicate|
           @references << Reference.new(name: predicate, location: location, kind: :method)
         end
+      end
+
+      # `Base.descendants` / `Base.subclasses` — emit a dynamic_subclasses reference for the
+      # receiver constant so the analyzer keeps every subclass of `Base` alive.
+      def collect_subclass_discovery_reference(node, name, location)
+        return unless SUBCLASS_DISCOVERY_METHODS.include?(name)
+
+        short = constant_short_name(node.receiver)
+        return unless short
+
+        @references << Reference.new(name: short, location: location, kind: :dynamic_subclasses)
+      end
+
+      # Short (demodulized) name of a constant receiver, or nil if the receiver isn't a
+      # constant. Unwraps Sorbet casts first, since `.descendants` is commonly called as
+      # `T.unsafe(Base).descendants` (Sorbet doesn't type reflection well).
+      def constant_short_name(receiver)
+        receiver = unwrap_sorbet_cast(receiver)
+        receiver.name.to_s if receiver.is_a?(Prism::ConstantReadNode) || receiver.is_a?(Prism::ConstantPathNode)
+      end
+
+      # `T.unsafe(X)` / `T.must(X)` / `T.let(X, ...)` / `T.cast(X, ...)` => X.
+      def unwrap_sorbet_cast(node)
+        return node unless node.is_a?(Prism::CallNode)
+        return node unless node.receiver.is_a?(Prism::ConstantReadNode) && node.receiver.name == :T
+        return node unless %w[unsafe must let cast].include?(node.name.to_s)
+
+        node.arguments&.arguments&.first || node
       end
 
       def predicate_matcher_names(name)

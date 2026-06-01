@@ -762,6 +762,31 @@ module SorbetDeadcode
         assert analyzer.type_resolver.method_signatures.dig("Wrapper", "const_path")
       end
 
+      # #69: classes discovered via Base.descendants / .subclasses are used at runtime.
+      def test_descendants_keeps_all_subclasses_alive_transitively
+        analyzer = analyze_source(<<~RUBY)
+          class Base
+          end
+
+          class Mid < Base
+          end
+
+          class Leaf < Mid
+          end
+
+          class Unrelated
+          end
+
+          Base.descendants.each(&:run)
+          Mid.subclasses.each(&:run)
+        RUBY
+        dead = analyzer.dead_definitions.map(&:name)
+
+        refute_includes dead, "Mid",  "direct subclass of a reflected base is alive"
+        refute_includes dead, "Leaf", "transitive subclass is alive"
+        assert_includes dead, "Unrelated", "unrelated class with no references is still dead"
+      end
+
       private
 
       def analyze_source(source)
