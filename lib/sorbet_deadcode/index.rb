@@ -22,12 +22,12 @@ module SorbetDeadcode
     # Serialize to a JSON string.
     def to_json(*)
       JSON.generate({
-        "version" => VERSION,
-        "created_at" => @created_at,
-        "paths" => @paths,
-        "exclude_paths" => @exclude_paths,
-        "dead_definitions" => @dead_definitions.map { |d| serialize_definition(d) },
-      })
+                      "version" => VERSION,
+                      "created_at" => @created_at,
+                      "paths" => @paths,
+                      "exclude_paths" => @exclude_paths,
+                      "dead_definitions" => @dead_definitions.map { |d| serialize_definition(d) }
+                    })
     end
 
     # Write to a file path.
@@ -45,7 +45,7 @@ module SorbetDeadcode
       new(
         dead_definitions: defs,
         paths: parsed["paths"] || [],
-        exclude_paths: parsed["exclude_paths"] || [],
+        exclude_paths: parsed["exclude_paths"] || []
       ).tap { |idx| idx.instance_variable_set(:@created_at, parsed["created_at"]) }
     end
 
@@ -75,13 +75,13 @@ module SorbetDeadcode
 
     private
 
-    def serialize_definition(d)
+    def serialize_definition(definition)
       {
-        "name" => d.name,
-        "full_name" => d.full_name,
-        "kind" => d.kind.to_s,
-        "location" => d.location,
-        "owner_name" => d.owner_name,
+        "name" => definition.name,
+        "full_name" => definition.full_name,
+        "kind" => definition.kind.to_s,
+        "location" => definition.location,
+        "owner_name" => definition.owner_name
       }
     end
 
@@ -91,7 +91,7 @@ module SorbetDeadcode
         full_name: hash["full_name"],
         kind: hash["kind"].to_sym,
         location: hash["location"],
-        owner_name: hash["owner_name"],
+        owner_name: hash["owner_name"]
       )
     end
     private_class_method :deserialize_definition

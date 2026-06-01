@@ -1,0 +1,61 @@
+plugins:
+  - rubocop-minitest
+  - rubocop-rake
+
+AllCops:
+  TargetRubyVersion: 3.4
+  NewCops: enable
+  SuggestExtensions: false
+  Exclude:
+    - "spec/fixtures/**/*"
+    - "vendor/**/*"
+    - "tmp/**/*"
+
+# This is a parser/AST tool: Prism visitor methods and the analyzer are naturally
+# long and branchy, so the size/complexity metrics produce mostly noise here.
+Metrics:
+  Enabled: false
+
+# A small, self-documenting gem; class-level doc comments aren't required.
+Style/Documentation:
+  Enabled: false
+
+Layout/LineLength:
+  Max: 140
+
+# Match the existing codebase conventions (avoid mass churn).
+Style/StringLiterals:
+  EnforcedStyle: double_quotes
+
+Style/StringLiteralsInInterpolation:
+  EnforcedStyle: double_quotes
+
+# Specs are organized as one big describe-less Minitest class per unit; multiple
+# expectations per test method are intentional and readable.
+Minitest/MultipleAssertions:
+  Enabled: false
+
+# Case statements that map several distinct cases to the same small result are
+# clearer kept separate than merged; common in the parser/classifier code.
+Lint/DuplicateBranch:
+  Enabled: false
+
+# Multi-line block chains (e.g. group_by { ... }.transform_values { ... }) read fine
+# and are idiomatic in the analyzer.
+Style/MultilineBlockChain:
+  Enabled: false
+
+# Keyword args are often kept for interface symmetry (e.g. test helpers, finder
+# constructors) even when a given path doesn't read them.
+Lint/UnusedMethodArgument:
+  AllowUnusedKeywordArguments: true
+
+# The DSL collectors intentionally use two passes over the same args (find an option
+# in pass 1, emit references in pass 2). Combining them reorders/﻿skips work and is wrong.
+Style/CombinableLoops:
+  Enabled: false
+
+# `$?` is idiomatic right after IO.popen; requiring the English stdlib for $CHILD_STATUS
+# adds noise without benefit.
+Style/SpecialGlobalVars:
+  Enabled: false

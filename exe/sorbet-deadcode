@@ -21,7 +21,7 @@ options = {
   filter_paths: [],
   show_confidence: false,
   classify: false,
-  only_action: nil,
+  only_action: nil
 }
 
 OptionParser.new do |opts|
@@ -76,20 +76,20 @@ OptionParser.new do |opts|
   end
 
   opts.on("--index OUTPUT_FILE",
-    "Run analysis and save the full dead-code index to a JSON file for later use.",
-    "Combine with --report to load-and-filter instead of re-analyzing.") do |f|
+          "Run analysis and save the full dead-code index to a JSON file for later use.",
+          "Combine with --report to load-and-filter instead of re-analyzing.") do |f|
     options[:output_index] = f
   end
 
   opts.on("--report INDEX_FILE",
-    "Load a pre-built index and report dead code without re-analyzing.",
-    "Combine with --paths to filter the report to specific directories.") do |f|
+          "Load a pre-built index and report dead code without re-analyzing.",
+          "Combine with --paths to filter the report to specific directories.") do |f|
     options[:load_index] = f
   end
 
   opts.on("--intersect OTHER_INDEX",
-    "Only report definitions that appear in BOTH this run AND OTHER_INDEX.",
-    "Use to cross-compare sorbet-deadcode results with Spoom or another run.") do |f|
+          "Only report definitions that appear in BOTH this run AND OTHER_INDEX.",
+          "Use to cross-compare sorbet-deadcode results with Spoom or another run.") do |f|
     options[:intersect_index] = f
   end
 
@@ -98,21 +98,21 @@ OptionParser.new do |opts|
   end
 
   opts.on("--classify",
-    "Annotate each candidate with confidence, reference count, risk flags, and a",
-    "suggested action (safe_delete / delete_with_spec / review / keep). Requires rg.") do
+          "Annotate each candidate with confidence, reference count, risk flags, and a",
+          "suggested action (safe_delete / delete_with_spec / review / keep). Requires rg.") do
     options[:classify] = true
   end
 
   opts.on("--only ACTION",
-    "With --classify, only show candidates whose suggested action is ACTION",
-    "(safe_delete, delete_with_spec, review, keep).") do |action|
+          "With --classify, only show candidates whose suggested action is ACTION",
+          "(safe_delete, delete_with_spec, review, keep).") do |action|
     options[:classify] = true
     options[:only_action] = action.to_sym
   end
 
   opts.on("--reference-root DIR",
-    "Also scan DIR for references (not definitions). Prevents public API",
-    "methods from appearing dead when callers live outside --paths.") do |dir|
+          "Also scan DIR for references (not definitions). Prevents public API",
+          "methods from appearing dead when callers live outside --paths.") do |dir|
     options[:reference_root] = dir
   end
 
@@ -133,15 +133,15 @@ options[:exclude_paths] = [] if options[:include_specs]
 
 mode_count = [options[:lsp], options[:hybrid], options[:file_table]].count(true)
 if mode_count > 1
-  $stderr.puts "Error: Only one of --lsp, --hybrid, or --file-table may be specified."
+  warn "Error: Only one of --lsp, --hybrid, or --file-table may be specified."
   exit 1
 end
 
 # --reference-root is only consumed by the default Prism analyze path; the LSP/hybrid/
 # file-table finders don't accept it yet. Warn instead of silently ignoring it.
 if options[:reference_root] && mode_count.positive?
-  $stderr.puts "[sorbet-deadcode] --reference-root is only applied in the default mode; " \
-               "ignoring it for --lsp/--hybrid/--file-table."
+  warn "[sorbet-deadcode] --reference-root is only applied in the default mode; " \
+       "ignoring it for --lsp/--hybrid/--file-table."
 end
 
 # --report loads a pre-built (already-verified) index instead of re-analyzing. When
@@ -150,38 +150,38 @@ end
 from_index = !options[:load_index].nil?
 
 results = if from_index
-  index = SorbetDeadcode::Index.load(options[:load_index])
-  index = index.filter_paths(options[:filter_paths]) unless options[:filter_paths].empty?
-  index = index.intersect(SorbetDeadcode::Index.load(options[:intersect_index])) if options[:intersect_index]
-  $stderr.puts "Loaded #{index.dead_definitions.size} dead code candidates from #{options[:load_index]}."
-  index.dead_definitions
-elsif options[:hybrid]
-  SorbetDeadcode.analyze_hybrid(
-    project_root: options[:project_root],
-    paths: options[:paths],
-    exclude_paths: options[:exclude_paths],
-    parallel: options[:parallel],
-  )
-elsif options[:file_table]
-  SorbetDeadcode.analyze_file_table(
-    project_root: options[:project_root],
-    paths: options[:paths],
-    exclude_paths: options[:exclude_paths],
-  )
-elsif options[:lsp]
-  SorbetDeadcode.analyze_with_lsp(
-    project_root: options[:project_root],
-    paths: options[:paths],
-    exclude_paths: options[:exclude_paths],
-    parallel: options[:parallel],
-  )
-else
-  SorbetDeadcode.analyze(
-    options[:paths],
-    exclude_paths: options[:exclude_paths],
-    reference_paths: options[:reference_root],
-  )
-end
+            index = SorbetDeadcode::Index.load(options[:load_index])
+            index = index.filter_paths(options[:filter_paths]) unless options[:filter_paths].empty?
+            index = index.intersect(SorbetDeadcode::Index.load(options[:intersect_index])) if options[:intersect_index]
+            warn "Loaded #{index.dead_definitions.size} dead code candidates from #{options[:load_index]}."
+            index.dead_definitions
+          elsif options[:hybrid]
+            SorbetDeadcode.analyze_hybrid(
+              project_root: options[:project_root],
+              paths: options[:paths],
+              exclude_paths: options[:exclude_paths],
+              parallel: options[:parallel]
+            )
+          elsif options[:file_table]
+            SorbetDeadcode.analyze_file_table(
+              project_root: options[:project_root],
+              paths: options[:paths],
+              exclude_paths: options[:exclude_paths]
+            )
+          elsif options[:lsp]
+            SorbetDeadcode.analyze_with_lsp(
+              project_root: options[:project_root],
+              paths: options[:paths],
+              exclude_paths: options[:exclude_paths],
+              parallel: options[:parallel]
+            )
+          else
+            SorbetDeadcode.analyze(
+              options[:paths],
+              exclude_paths: options[:exclude_paths],
+              reference_paths: options[:reference_root]
+            )
+          end
 
 # Apply the non-Ruby reference refiners to EVERY analysis mode's results, not just the
 # default Prism path. Without this, routed controllers and template-/config-referenced
@@ -199,7 +199,7 @@ end
 if !from_index && options[:verify] && !results.empty?
   verifier = SorbetDeadcode::Verifier::RipgrepVerifier.new(
     project_root: options[:project_root],
-    exclude_paths: options[:exclude_paths],
+    exclude_paths: options[:exclude_paths]
   )
   results = verifier.verify(results)
 end
@@ -209,10 +209,10 @@ if !from_index && options[:output_index]
   index = SorbetDeadcode::Index.new(
     dead_definitions: results,
     paths: options[:paths],
-    exclude_paths: options[:exclude_paths],
+    exclude_paths: options[:exclude_paths]
   )
   index.write(options[:output_index])
-  $stderr.puts "Index written to #{options[:output_index]} (#{results.size} candidates)."
+  warn "Index written to #{options[:output_index]} (#{results.size} candidates)."
 end
 
 # --intersect: filter to definitions that also appear in another index.
@@ -220,13 +220,13 @@ end
 if !from_index && options[:intersect_index]
   other = SorbetDeadcode::Index.load(options[:intersect_index])
   results = SorbetDeadcode::Index.new(dead_definitions: results, paths: options[:paths])
-              .intersect(other)
-              .dead_definitions
-  $stderr.puts "Intersection: #{results.size} candidates appear in both indexes."
+                                 .intersect(other)
+                                 .dead_definitions
+  warn "Intersection: #{results.size} candidates appear in both indexes."
 end
 
 if results.empty?
-  $stderr.puts "No dead code found."
+  warn "No dead code found."
   exit 0
 end
 
@@ -234,19 +234,19 @@ end
 if options[:classify]
   classifier = SorbetDeadcode::Classifier.new(
     project_root: options[:project_root],
-    exclude_paths: options[:exclude_paths],
+    exclude_paths: options[:exclude_paths]
   )
   classified = classifier.classify(results)
   classified = classified.select { |c| c.suggested_action == options[:only_action] } if options[:only_action]
 
   if classified.empty?
-    $stderr.puts "No candidates matched."
+    warn "No candidates matched."
     exit 0
   end
 
-  $stderr.puts "Classified #{classified.size} candidates:\n\n"
+  warn "Classified #{classified.size} candidates:\n\n"
   classified.sort_by { |c| [c.suggested_action.to_s, c.definition.full_name] }.each do |c|
-    flags = c.flags.empty? ? "" : " flags=#{c.flags.join(',')}"
+    flags = c.flags.empty? ? "" : " flags=#{c.flags.join(",")}"
     puts "  [#{c.suggested_action}] [#{c.confidence}] #{c.definition.kind} #{c.definition.full_name} " \
          "(refs=#{c.external_reference_count}#{flags})"
     puts "    #{c.definition.location}"
@@ -255,15 +255,15 @@ if options[:classify]
   exit 1
 end
 
-$stderr.puts "Found #{results.size} dead code candidates:\n\n"
+warn "Found #{results.size} dead code candidates:\n\n"
 
 # Build ref index for confidence scoring if requested
 ref_index = if options[:show_confidence]
-  require "sorbet_deadcode/analyzer/dead_code_analyzer"
-  # Approximate from the existing results — build a minimal ref_index
-  { typed_by_name: {}, untyped_methods: Set.new, constants: Set.new,
-    method_prefixes: Set.new, method_suffixes: Set.new, dynamic_namespaces: Set.new }
-end
+              require "sorbet_deadcode/analyzer/dead_code_analyzer"
+              # Approximate from the existing results — build a minimal ref_index
+              { typed_by_name: {}, untyped_methods: Set.new, constants: Set.new,
+                method_prefixes: Set.new, method_suffixes: Set.new, dynamic_namespaces: Set.new }
+            end
 
 results.sort_by(&:full_name).each do |defn|
   if options[:show_confidence] && ref_index

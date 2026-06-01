@@ -99,7 +99,7 @@ module SorbetDeadcode
               end
             end
           RUBY
-          "service.rb" => <<~RUBY,
+          "service.rb" => <<~RUBY
             class Service
               sig { params(company: Company).returns(String) }
               def show(company)
@@ -770,7 +770,7 @@ module SorbetDeadcode
         analyzer = DeadCodeAnalyzer.new(paths: [dir])
         analyzer.run
         analyzer
-      ensure
+
         # Don't clean up — let the test process handle it
       end
 

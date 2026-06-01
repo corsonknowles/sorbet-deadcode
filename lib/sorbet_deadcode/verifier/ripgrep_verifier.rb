@@ -18,20 +18,20 @@ module SorbetDeadcode
         return [] if candidates.empty?
 
         unless Ripgrep.available?
-          $stderr.puts "[sorbet-deadcode] ripgrep (rg) not found — skipping verification. " \
-                       "Install ripgrep for fewer false positives, or pass --no-verify."
+          warn "[sorbet-deadcode] ripgrep (rg) not found — skipping verification. " \
+               "Install ripgrep for fewer false positives, or pass --no-verify."
           return candidates
         end
 
         by_name = candidates.group_by(&:name)
         pattern_file = write_pattern_file(by_name.keys)
 
-        $stderr.puts "[sorbet-deadcode] Verifying #{candidates.size} candidates (#{by_name.size} unique names) with ripgrep..."
+        warn "[sorbet-deadcode] Verifying #{candidates.size} candidates (#{by_name.size} unique names) with ripgrep..."
 
         ref_counts = run_ripgrep(pattern_file)
 
         verified = candidates.select { |defn| truly_dead?(defn, ref_counts) }
-        $stderr.puts "[sorbet-deadcode] #{verified.size}/#{candidates.size} candidates confirmed dead."
+        warn "[sorbet-deadcode] #{verified.size}/#{candidates.size} candidates confirmed dead."
         verified
       ensure
         File.delete(pattern_file) if pattern_file && File.exist?(pattern_file)
@@ -41,7 +41,7 @@ module SorbetDeadcode
 
       def write_pattern_file(names)
         file = Tempfile.new(["sorbet_deadcode_patterns", ".txt"])
-        file.write(names.join("\n") + "\n")
+        file.write("#{names.join("\n")}\n")
         file.close
         file.path
       end

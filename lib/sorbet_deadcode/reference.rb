@@ -36,7 +36,7 @@ module SorbetDeadcode
         receiver_type == other.receiver_type
     end
 
-    alias_method :eql?, :==
+    alias eql? ==
 
     def hash
       [name, kind, receiver_type].hash

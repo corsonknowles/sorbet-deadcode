@@ -19,7 +19,7 @@ module SorbetDeadcode
       path
     end
 
-    def defn(name, kind: :method, location:, owner_name: "Foo", co_located_names: [])
+    def defn(name, location:, kind: :method, owner_name: "Foo", co_located_names: [])
       Definition.new(name: name, full_name: "#{owner_name}##{name}", kind: kind,
                      location: location, owner_name: owner_name, co_located_names: co_located_names)
     end
@@ -70,7 +70,7 @@ module SorbetDeadcode
     def test_inline_constant_is_review
       path = write("app/config.rb", "class Config\n  PARENT = [CHILD = 1].freeze\nend\n")
       result = classify_one(
-        defn("PARENT", kind: :constant, location: "#{path}:2", owner_name: "Config", co_located_names: ["CHILD"]),
+        defn("PARENT", kind: :constant, location: "#{path}:2", owner_name: "Config", co_located_names: ["CHILD"])
       )
 
       assert_includes result.flags, :inline_constant
@@ -152,9 +152,9 @@ module SorbetDeadcode
       write("app/caller.rb", "Foo.new.alive_one\n")
 
       results = Classifier.new(project_root: @dir).classify([
-        defn("dead_one", location: "#{path}:2"),
-        defn("alive_one", location: "#{path}:5"),
-      ])
+                                                              defn("dead_one", location: "#{path}:2"),
+                                                              defn("alive_one", location: "#{path}:5")
+                                                            ])
 
       by_name = results.to_h { |r| [r.definition.name, r.suggested_action] }
       assert_equal :safe_delete, by_name["dead_one"]
@@ -166,7 +166,7 @@ module SorbetDeadcode
       write("app/caller.rb", "Foo.new.counted\n")
       result = classify_one(defn("counted", location: "#{path}:2"))
 
-      assert_equal 2, result.reference_count        # definition + 1 caller
+      assert_equal 2, result.reference_count # definition + 1 caller
       assert_equal 1, result.external_reference_count
     end
   end

@@ -26,10 +26,10 @@ module SorbetDeadcode
         send_did_open(uri, file_path)
 
         result = send_request("textDocument/references", {
-          "textDocument" => { "uri" => uri },
-          "position" => { "line" => line, "character" => column },
-          "context" => { "includeDeclaration" => false },
-        })
+                                "textDocument" => { "uri" => uri },
+                                "position" => { "line" => line, "character" => column },
+                                "context" => { "includeDeclaration" => false }
+                              })
 
         result || []
       end
@@ -39,10 +39,10 @@ module SorbetDeadcode
         send_did_open(uri, file_path)
 
         send_request_async("textDocument/references", {
-          "textDocument" => { "uri" => uri },
-          "position" => { "line" => line, "character" => column },
-          "context" => { "includeDeclaration" => false },
-        })
+                             "textDocument" => { "uri" => uri },
+                             "position" => { "line" => line, "character" => column },
+                             "context" => { "includeDeclaration" => false }
+                           })
       end
 
       def collect_response(expected_id)
@@ -69,20 +69,20 @@ module SorbetDeadcode
         @stderr_thread&.join(5)
         @wait_thread&.join(5)
 
-        if @wait_thread&.alive?
-          Process.kill("TERM", @wait_thread.pid)
-          @wait_thread.join(5)
-        end
+        return unless @wait_thread&.alive?
+
+        Process.kill("TERM", @wait_thread.pid)
+        @wait_thread.join(5)
       end
 
       def check_sorbet_cache
         cache_dir = File.join(@project_root, "tmp", "cache", "sorbet")
         return if File.directory?(cache_dir)
 
-        $stderr.puts(
+        warn(
           "Sorbet cache not found at tmp/cache/sorbet. " \
           "Run 'srb tc' first to build the cache. " \
-          "LSP startup will be slow without it.",
+          "LSP startup will be slow without it."
         )
       end
 
@@ -93,7 +93,7 @@ module SorbetDeadcode
       def start_server
         @stdin, @stdout, @stderr_thread, @wait_thread = Open3.popen3(
           "bundle", "exec", "srb", "tc", "--lsp", "--disable-watchman",
-          chdir: @project_root,
+          chdir: @project_root
         )
         @started = true
         @opened_files = Set.new
@@ -101,9 +101,9 @@ module SorbetDeadcode
 
       def send_initialize
         send_request("initialize", {
-          "rootUri" => "file://#{@project_root}",
-          "capabilities" => {},
-        })
+                       "rootUri" => "file://#{@project_root}",
+                       "capabilities" => {}
+                     })
       end
 
       def send_initialized
@@ -115,13 +115,13 @@ module SorbetDeadcode
 
         text = File.read(File.expand_path(file_path))
         send_notification("textDocument/didOpen", {
-          "textDocument" => {
-            "uri" => uri,
-            "languageId" => "ruby",
-            "version" => 1,
-            "text" => text,
-          },
-        })
+                            "textDocument" => {
+                              "uri" => uri,
+                              "languageId" => "ruby",
+                              "version" => 1,
+                              "text" => text
+                            }
+                          })
         @opened_files.add(uri)
       end
 
@@ -135,7 +135,7 @@ module SorbetDeadcode
           "jsonrpc" => "2.0",
           "id" => id,
           "method" => method,
-          "params" => params,
+          "params" => params
         }
         write_message(message)
         read_response(id)
@@ -147,7 +147,7 @@ module SorbetDeadcode
           "jsonrpc" => "2.0",
           "id" => id,
           "method" => method,
-          "params" => params,
+          "params" => params
         }
         write_message(message)
         id
@@ -157,7 +157,7 @@ module SorbetDeadcode
         message = {
           "jsonrpc" => "2.0",
           "method" => method,
-          "params" => params,
+          "params" => params
         }
         write_message(message)
       end
@@ -174,6 +174,7 @@ module SorbetDeadcode
         if buffered_responses.key?(expected_id)
           msg = buffered_responses.delete(expected_id)
           raise Error, "LSP error: #{msg["error"]["message"]}" if msg.key?("error")
+
           return msg["result"]
         end
 
@@ -182,9 +183,8 @@ module SorbetDeadcode
           return nil unless message
 
           if message.key?("id") && message["id"] == expected_id
-            if message.key?("error")
-              raise Error, "LSP error: #{message["error"]["message"]}"
-            end
+            raise Error, "LSP error: #{message["error"]["message"]}" if message.key?("error")
+
             return message["result"]
           elsif message.key?("id")
             buffered_responses[message["id"]] = message
@@ -202,12 +202,11 @@ module SorbetDeadcode
           line = line.strip
           if line.empty?
             break if content_length
+
             next
           end
 
-          if line.start_with?("Content-Length:")
-            content_length = line.split(":").last.strip.to_i
-          end
+          content_length = line.split(":").last.strip.to_i if line.start_with?("Content-Length:")
         end
 
         body = @stdout.read(content_length || 0)

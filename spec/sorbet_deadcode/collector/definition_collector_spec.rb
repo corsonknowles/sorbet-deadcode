@@ -183,7 +183,7 @@ module SorbetDeadcode
           end
         RUBY
 
-        assert_empty defs.select { |d| d.kind == :attr_reader }
+        assert_empty(defs.select { |d| d.kind == :attr_reader })
       end
 
       def test_top_level_attr_reader_has_no_owner

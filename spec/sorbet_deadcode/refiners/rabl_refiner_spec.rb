@@ -22,7 +22,7 @@ module SorbetDeadcode
       def make_def(name, kind: :method, owner: "Widget")
         Definition.new(
           name: name, full_name: "#{owner}##{name}", kind: kind,
-          location: "app/models/widget.rb:1", owner_name: owner,
+          location: "app/models/widget.rb:1", owner_name: owner
         )
       end
 
@@ -108,7 +108,7 @@ module SorbetDeadcode
 
         results = SorbetDeadcode.analyze_and_refine(
           paths: [File.join(@dir, "app", "models")],
-          refiners: [RablRefiner.new(@dir)],
+          refiners: [RablRefiner.new(@dir)]
         )
         names = results.map(&:name)
 

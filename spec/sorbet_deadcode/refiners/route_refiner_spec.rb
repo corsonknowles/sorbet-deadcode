@@ -18,7 +18,7 @@ module SorbetDeadcode
         Definition.new(
           name: name, full_name: "#{owner}##{name}", kind: kind,
           location: "app/controllers/widgets_controller.rb:1",
-          owner_name: owner,
+          owner_name: owner
         )
       end
 
@@ -55,7 +55,7 @@ module SorbetDeadcode
         write_routes("get '/widgets', to: 'widgets#index'")
         defn = Definition.new(
           name: "WidgetsController", full_name: "WidgetsController",
-          kind: :class, location: "f:1",
+          kind: :class, location: "f:1"
         )
         result = refiner.refine([defn])
         assert_empty result
@@ -65,14 +65,14 @@ module SorbetDeadcode
         write_routes("get '/widgets', to: 'widgets#index'")
         defn = Definition.new(
           name: "SomeService", full_name: "SomeService",
-          kind: :class, location: "f:1",
+          kind: :class, location: "f:1"
         )
         result = refiner.refine([defn])
         assert_equal [defn], result
       end
 
       def test_returns_unchanged_when_routes_file_is_empty
-        write_routes("")   # parses fine but emits no references → routed set empty
+        write_routes("") # parses fine but emits no references → routed set empty
         defn = make_def("index")
         result = refiner.refine([defn])
         assert_equal [defn], result
@@ -82,7 +82,7 @@ module SorbetDeadcode
         write_routes("get '/widgets', to: 'widgets#index'")
         defn = Definition.new(
           name: "title", full_name: "WidgetsController#title",
-          kind: :attr_reader, location: "f:1", owner_name: "WidgetsController",
+          kind: :attr_reader, location: "f:1", owner_name: "WidgetsController"
         )
         result = refiner.refine([defn])
         assert_equal [defn], result
@@ -102,7 +102,7 @@ module SorbetDeadcode
         write_routes("get '/widgets', to: 'widgets#index'")
         const_def = Definition.new(
           name: "MY_CONST", full_name: "WidgetsController::MY_CONST",
-          kind: :constant, location: "f:1", owner_name: "WidgetsController",
+          kind: :constant, location: "f:1", owner_name: "WidgetsController"
         )
         result = refiner.refine([const_def])
         assert_equal [const_def], result
@@ -151,7 +151,7 @@ module SorbetDeadcode
 
         results = SorbetDeadcode.analyze_and_refine(
           paths: [File.join(@dir, "app")],
-          refiners: [RouteRefiner.new(@dir)],
+          refiners: [RouteRefiner.new(@dir)]
         )
         names = results.map(&:name)
 

@@ -47,9 +47,9 @@ module SorbetDeadcode
         RUBY
 
         client = MockClient.new({
-          "looks_dead" => [ref("#{dir}/other.rb", 10)],
-          "truly_dead" => [],
-        })
+                                  "looks_dead" => [ref("#{dir}/other.rb", 10)],
+                                  "truly_dead" => []
+                                })
 
         results = run_finder(dir, client)
         dead_names = results.map(&:name)
@@ -112,10 +112,10 @@ module SorbetDeadcode
         RUBY
 
         client = MockClient.new({
-          "dead_one" => [],
-          "dead_two" => [],
-          "alive_via_lsp" => [ref("#{dir}/caller.rb", 1)],
-        })
+                                  "dead_one" => [],
+                                  "dead_two" => [],
+                                  "alive_via_lsp" => [ref("#{dir}/caller.rb", 1)]
+                                })
 
         results = run_finder(dir, client, parallel: 3)
         dead_names = results.map(&:name)
@@ -337,7 +337,7 @@ module SorbetDeadcode
       def ref(path, line)
         {
           "uri" => "file://#{File.expand_path(path)}",
-          "range" => { "start" => { "line" => line, "character" => 0 }, "end" => { "line" => line, "character" => 5 } },
+          "range" => { "start" => { "line" => line, "character" => 0 }, "end" => { "line" => line, "character" => 5 } }
         }
       end
 
@@ -346,7 +346,7 @@ module SorbetDeadcode
           project_root: dir,
           paths: [dir],
           exclude_paths: exclude_paths,
-          parallel: parallel,
+          parallel: parallel
         )
         capture_stderr do
           Client.stub(:new, client) { finder.run }

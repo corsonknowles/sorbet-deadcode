@@ -16,6 +16,8 @@ module SorbetDeadcode
     # of a `class << self` method as its fully-qualified constant, which matches the receiver
     # written in the YAML.)
     class YamlRefiner
+      METHOD_KINDS = %i[method attr_reader attr_writer].freeze
+
       def initialize(project_root, keys: Scanners::YamlScanner::DEFAULT_KEYS,
                      bare_keys: Scanners::YamlScanner::DEFAULT_BARE_KEYS,
                      globs: Scanners::YamlScanner::DEFAULT_GLOBS)
@@ -31,16 +33,12 @@ module SorbetDeadcode
         return dead_candidates if dead_candidates.empty?
 
         referenced = build_referenced_set
-        if referenced[:typed_methods].empty? && referenced[:bare_methods].empty? && referenced[:classes].empty?
-          return dead_candidates
-        end
+        return dead_candidates if referenced[:typed_methods].empty? && referenced[:bare_methods].empty? && referenced[:classes].empty?
 
         dead_candidates.reject { |d| yaml_referenced?(d, referenced) }
       end
 
       private
-
-      METHOD_KINDS = %i[method attr_reader attr_writer].freeze
 
       def build_referenced_set
         refs = Scanners::YamlScanner.new(
@@ -62,7 +60,7 @@ module SorbetDeadcode
       def yaml_referenced?(defn, referenced)
         if METHOD_KINDS.include?(defn.kind)
           return referenced[:typed_methods].include?([defn.owner_name, defn.name]) ||
-              referenced[:bare_methods].include?(defn.name)
+                 referenced[:bare_methods].include?(defn.name)
         end
 
         referenced[:classes].include?(defn.name) ||

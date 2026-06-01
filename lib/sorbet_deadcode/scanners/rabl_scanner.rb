@@ -92,13 +92,13 @@ module SorbetDeadcode
         @references << Reference.new(
           name: method_name,
           location: "#{@file_path}:#{node.location.start_line}",
-          kind: :method,
+          kind: :method
         )
       end
 
       # Every symbol argument is a model attribute, e.g. `attributes :id, :name`.
       def symbol_args(node)
-        arguments(node).select { |arg| arg.is_a?(Prism::SymbolNode) }.map(&:unescaped)
+        arguments(node).grep(Prism::SymbolNode).map(&:unescaped)
       end
 
       # For `child`/`glue`: a leading symbol is the association method, and `key: :alias`

@@ -46,7 +46,10 @@ class SorbetDeadcodeModuleSpec < Minitest::Test
     SorbetDeadcode::Lsp::DeadCodeFinder.stub(:new, FakeRunner.new) do
       applied = false
       stub_refiner = Object.new
-      stub_refiner.define_singleton_method(:refine) { |c| applied = true; c }
+      stub_refiner.define_singleton_method(:refine) do |c|
+        applied = true
+        c
+      end
       SorbetDeadcode.analyze_and_refine(paths: ["."], refiners: [stub_refiner])
       assert applied
     end

@@ -53,7 +53,6 @@ module SorbetDeadcode
         before_action after_action around_action
         prepend_before_action append_before_action
         skip_before_action
-        after_update before_update
       ].to_set.freeze
 
       def initialize(file_path, type_resolver: nil)
@@ -200,13 +199,13 @@ module SorbetDeadcode
             name: name,
             location: location,
             kind: :method,
-            receiver_type: receiver_type,
+            receiver_type: receiver_type
           )
         else
           @references << Reference.new(
             name: name,
             location: location,
-            kind: :method,
+            kind: :method
           )
         end
 
@@ -219,7 +218,7 @@ module SorbetDeadcode
         @references << Reference.new(
           name: node.name.to_s,
           location: format_location(node.location),
-          kind: :constant,
+          kind: :constant
         )
         super
       end
@@ -238,7 +237,7 @@ module SorbetDeadcode
           @references << Reference.new(
             name: parts[0..i].join("::"),
             location: location,
-            kind: :constant,
+            kind: :constant
           )
         end
         super
@@ -249,7 +248,7 @@ module SorbetDeadcode
         if node.value.is_a?(Prism::CallNode) && @type_resolver
           type = @type_resolver.return_type_of(
             resolve_receiver_type(node.value.receiver),
-            node.value.name.to_s,
+            node.value.name.to_s
           )
           @local_types[node.name.to_s] = type if type
         end
@@ -257,16 +256,12 @@ module SorbetDeadcode
         # Track `m = "dump_#{x}"` so a later send(m) can emit a precise method_prefix
         # reference (keeping `dump_*` methods alive) instead of excluding the whole namespace.
         prefix = literal_prefix(node.value)
-        if prefix && !prefix.empty?
-          @local_prefixes[node.name.to_s] = prefix
-        end
+        @local_prefixes[node.name.to_s] = prefix if prefix && !prefix.empty?
 
         # Track `m = "#{x}_at"` so a later send(m) can emit a precise method_suffix
         # reference (keeping `*_at` methods alive) instead of excluding the whole namespace.
         suffix = literal_suffix(node.value)
-        if suffix && !suffix.empty?
-          @local_suffixes[node.name.to_s] = suffix
-        end
+        @local_suffixes[node.name.to_s] = suffix if suffix && !suffix.empty?
 
         super
       end
@@ -310,7 +305,7 @@ module SorbetDeadcode
             name: first_arg.unescaped,
             location: location,
             kind: :method,
-            receiver_type: receiver_type,
+            receiver_type: receiver_type
           )
           return
         end
@@ -385,7 +380,7 @@ module SorbetDeadcode
         node = node.receiver if node.is_a?(Prism::CallNode) && node.name.to_s == "freeze" && node.receiver
         return nil unless node.is_a?(Prism::ArrayNode)
         return nil if node.elements.empty?
-        return nil unless node.elements.all? { |el| el.is_a?(Prism::SymbolNode) }
+        return nil unless node.elements.all?(Prism::SymbolNode)
 
         node.elements.map(&:unescaped)
       end
@@ -404,11 +399,11 @@ module SorbetDeadcode
 
       def predicate_matcher_names(name)
         if name.start_with?("be_an_")
-          ["#{name.delete_prefix('be_an_')}?"]
+          ["#{name.delete_prefix("be_an_")}?"]
         elsif name.start_with?("be_a_")
-          ["#{name.delete_prefix('be_a_')}?"]
+          ["#{name.delete_prefix("be_a_")}?"]
         elsif name.start_with?("be_")
-          ["#{name.delete_prefix('be_')}?"]
+          ["#{name.delete_prefix("be_")}?"]
         elsif name.start_with?("have_")
           base = name.delete_prefix("have_")
           ["has_#{base}?", "have_#{base}?"]
@@ -422,23 +417,23 @@ module SorbetDeadcode
       def collect_delegate_references(node, location)
         prefix = nil
         node.arguments.arguments.each do |arg|
-          if arg.is_a?(Prism::KeywordHashNode)
-            arg.elements.each do |assoc|
-              next unless assoc.is_a?(Prism::AssocNode)
+          next unless arg.is_a?(Prism::KeywordHashNode)
 
-              key = assoc.key.slice.delete_suffix(":")
-              next unless key == "prefix"
+          arg.elements.each do |assoc|
+            next unless assoc.is_a?(Prism::AssocNode)
 
-              val = assoc.value
-              prefix = if val.is_a?(Prism::TrueNode)
-                # `prefix: true` → method name is inferred from :to value; we
-                # conservatively emit a method_prefix reference so all prefixed
-                # variants stay alive.
-                :true_prefix
-              elsif val.is_a?(Prism::SymbolNode)
-                val.unescaped
-              end
-            end
+            key = assoc.key.slice.delete_suffix(":")
+            next unless key == "prefix"
+
+            val = assoc.value
+            prefix = if val.is_a?(Prism::TrueNode)
+                       # `prefix: true` → method name is inferred from :to value; we
+                       # conservatively emit a method_prefix reference so all prefixed
+                       # variants stay alive.
+                       :true_prefix
+                     elsif val.is_a?(Prism::SymbolNode)
+                       val.unescaped
+                     end
           end
         end
 
@@ -499,7 +494,7 @@ module SorbetDeadcode
             @references << Reference.new(
               name: "build_#{arg.unescaped}",
               location: location,
-              kind: :method,
+              kind: :method
             )
           end
           return
@@ -528,7 +523,7 @@ module SorbetDeadcode
               # to resolve the argument; the `_id` suffix is stripped by convention.
               next unless arg_name
 
-              @references << Reference.new(name: "load_#{arg_name.delete_suffix('_id')}", location: location, kind: :method)
+              @references << Reference.new(name: "load_#{arg_name.delete_suffix("_id")}", location: location, kind: :method)
             end
           end
         end
@@ -541,7 +536,7 @@ module SorbetDeadcode
           @references << Reference.new(
             name: "#{arg.unescaped}_attributes",
             location: location,
-            kind: :method_prefix,
+            kind: :method_prefix
           )
         end
       end
@@ -553,7 +548,7 @@ module SorbetDeadcode
           @references << Reference.new(
             name: arg.unescaped,
             location: location,
-            kind: :method,
+            kind: :method
           )
         end
       end
@@ -663,7 +658,7 @@ module SorbetDeadcode
       #   - is named *Preview AND lives in a mailer_previews path (Rails convention).
       def mailer_preview_class?(class_node)
         superclass = class_node.superclass
-        return true if superclass && superclass.slice.include?("Preview")
+        return true if superclass&.slice&.include?("Preview")
 
         name = node_class_name(class_node)
         return true if name.end_with?("MailerPreview")
