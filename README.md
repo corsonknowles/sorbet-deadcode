@@ -115,6 +115,24 @@ sorbet-deadcode --report tmp/deadcode.json --intersect tmp/spoom.json
 flows through classification and confidence scoring, so the index → classify workflow
 works end to end.
 
+### Reporting dynamic dispatch (`--report-dynamic-dispatch`)
+
+By default, a method is conservatively kept alive when its namespace contains a
+fully-variable `send`/`__send__`/`public_send` (e.g. `__send__(method_name)`) whose
+target can't be resolved — zero false positives, but it can hide genuinely dead methods.
+`--report-dynamic-dispatch` opts out of that namespace fallback: such methods are
+*reported* instead of suppressed, surfacing as **low-confidence** candidates. Pair it
+with `--classify` or `--confidence` to review them:
+
+```bash
+# Surface namespace-dispatched methods for review, with reference counts and actions
+sorbet-deadcode packs/my_pack/ --reference-root packs/ --report-dynamic-dispatch --classify
+```
+
+Precisely-resolved dispatch (literal symbols, interpolation prefixes/suffixes, and
+finite symbol-list iteration) always keeps the targeted methods alive regardless of this
+flag. It applies to the default Prism path only (not `--lsp`/`--hybrid`/`--file-table`).
+
 ### False-Positive Handling
 
 `sorbet-deadcode` detects and suppresses several classes of dynamic dispatch that

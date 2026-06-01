@@ -28,6 +28,12 @@
   false positives for nested classes.
 
 ### Added
+- **`--report-dynamic-dispatch` CLI flag** (#31) — exposes the analyzer's
+  `dynamic_dispatch: :report` mode (previously API-only). Instead of conservatively
+  keeping every method in a namespace alive when it contains a fully-variable
+  `send`/`__send__`/`public_send`, the flag reports those methods as low-confidence
+  candidates. Applies to the default Prism path only; pair with `--classify` /
+  `--confidence` to review the surfaced candidates.
 - **Rails generator / Thor command detection** — classes inheriting from `Rails::Generators::Base`
   or `Rails::Generators::NamedBase` (and `Thor` / `Thor::Group`) invoke every public instance
   method as an ordered step/command via reflection. Their methods are now kept alive (the whole
