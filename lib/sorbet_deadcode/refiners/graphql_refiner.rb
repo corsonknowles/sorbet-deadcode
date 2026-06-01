@@ -13,11 +13,14 @@ module SorbetDeadcode
     # definition. This prevents a generic field name (`id`, `name`, `status`, `nodes`) in
     # one subgraph from masking a same-named method in an unrelated directory.
     class GraphqlRefiner
+      include Reportable
       METHOD_KINDS = %i[method attr_reader attr_writer].freeze
+      REASON = :graphql_sdl
 
-      def initialize(project_root, globs: Scanners::GraphqlScanner::DEFAULT_GLOBS)
+      def initialize(project_root, globs: Scanners::GraphqlScanner::DEFAULT_GLOBS, mode: :exclude)
         @project_root = File.expand_path(project_root)
         @globs = globs
+        @mode = mode
       end
 
       # @param dead_candidates [Array<Definition>]
@@ -28,7 +31,7 @@ module SorbetDeadcode
         scoped = scoped_names_by_dir
         return dead_candidates if scoped.empty?
 
-        dead_candidates.reject { |defn| sdl_referenced?(defn, scoped) }
+        resolve(dead_candidates) { |defn| sdl_referenced?(defn, scoped) }
       end
 
       private

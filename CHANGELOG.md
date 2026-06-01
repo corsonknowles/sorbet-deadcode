@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+- **`--report-non-ruby` flag** (#61) — opt into reporting candidates that the route / YAML /
+  ERB / RABL / GraphQL SDL refiners would otherwise hard-exclude. Instead of removing them,
+  each refiner tags the candidate (`Definition#kept_by`) and the Classifier surfaces it as a
+  low-confidence `review` candidate flagged with its source (e.g. `flags=kept_by:graphql_sdl`).
+  Mirrors `--report-dynamic-dispatch` (#31); default behavior (hard-exclude) is unchanged.
+
 ### Fixed
 - **`T::Enum` values are no longer reported dead** (#70) — enum values declared as
   `Active = new('active')` inside a `T::Enum` subclass's `enums do` block are reached via

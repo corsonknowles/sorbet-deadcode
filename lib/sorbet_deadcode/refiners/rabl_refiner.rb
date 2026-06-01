@@ -9,11 +9,14 @@ module SorbetDeadcode
     # method matching is name-only: any dead method whose name is exposed by a template is
     # kept alive. Constants named in templates keep the corresponding class/module alive.
     class RablRefiner
+      include Reportable
       METHOD_KINDS = %i[method attr_reader attr_writer].freeze
+      REASON = :rabl
 
-      def initialize(project_root, globs: Scanners::RablScanner::DEFAULT_GLOBS)
+      def initialize(project_root, globs: Scanners::RablScanner::DEFAULT_GLOBS, mode: :exclude)
         @project_root = File.expand_path(project_root)
         @globs = globs
+        @mode = mode
       end
 
       # @param dead_candidates [Array<Definition>]
@@ -24,7 +27,7 @@ module SorbetDeadcode
         referenced = build_referenced_set
         return dead_candidates if referenced[:methods].empty? && referenced[:constants].empty?
 
-        dead_candidates.reject { |d| rabl_referenced?(d, referenced) }
+        resolve(dead_candidates) { |d| rabl_referenced?(d, referenced) }
       end
 
       private

@@ -33,6 +33,7 @@ options = {
   only_action: nil,
   plain: false,
   report_dynamic_dispatch: false,
+  report_non_ruby: false,
 }
 
 OptionParser.new do |opts|
@@ -145,6 +146,13 @@ OptionParser.new do |opts|
     options[:report_dynamic_dispatch] = true
   end
 
+  opts.on("--report-non-ruby",
+    "Report methods/classes kept alive only by a non-Ruby reference (route / YAML /",
+    "ERB / RABL / GraphQL SDL) instead of excluding them. They surface as low-confidence",
+    "candidates tagged with the source (e.g. flags=kept_by:graphql_sdl).") do
+    options[:report_non_ruby] = true
+  end
+
   opts.on("--reference-root DIR",
     "Also scan DIR for references (not definitions). Prevents public API",
     "methods from appearing dead when callers live outside --paths.") do |dir|
@@ -241,12 +249,13 @@ end
 # methods resurface as false positives under --lsp/--hybrid/--file-table. (--report
 # results were already refined when the index was built, so skip them here.)
 unless from_index
+  refiner_mode = options[:report_non_ruby] ? :report : :exclude
   refiners = []
-  refiners << SorbetDeadcode::Refiners::RouteRefiner.new(options[:project_root]) unless options[:no_routes]
-  refiners << SorbetDeadcode::Refiners::YamlRefiner.new(options[:project_root]) unless options[:no_yaml]
-  refiners << SorbetDeadcode::Refiners::ErbRefiner.new(options[:project_root]) unless options[:no_erb]
-  refiners << SorbetDeadcode::Refiners::RablRefiner.new(options[:project_root]) unless options[:no_rabl]
-  refiners << SorbetDeadcode::Refiners::GraphqlRefiner.new(options[:project_root]) unless options[:no_graphql]
+  refiners << SorbetDeadcode::Refiners::RouteRefiner.new(options[:project_root], mode: refiner_mode) unless options[:no_routes]
+  refiners << SorbetDeadcode::Refiners::YamlRefiner.new(options[:project_root], mode: refiner_mode) unless options[:no_yaml]
+  refiners << SorbetDeadcode::Refiners::ErbRefiner.new(options[:project_root], mode: refiner_mode) unless options[:no_erb]
+  refiners << SorbetDeadcode::Refiners::RablRefiner.new(options[:project_root], mode: refiner_mode) unless options[:no_rabl]
+  refiners << SorbetDeadcode::Refiners::GraphqlRefiner.new(options[:project_root], mode: refiner_mode) unless options[:no_graphql]
   results = refiners.reduce(results) { |candidates, refiner| refiner.refine(candidates) }
 end
 

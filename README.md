@@ -164,6 +164,19 @@ Precisely-resolved dispatch (literal symbols, interpolation prefixes/suffixes, a
 finite symbol-list iteration) always keeps the targeted methods alive regardless of this
 flag. It applies to the default Prism path only (not `--lsp`/`--hybrid`/`--file-table`).
 
+### Reporting non-Ruby references (`--report-non-ruby`)
+
+By default the route / YAML / ERB / RABL / GraphQL SDL refiners **hard-exclude** any
+candidate they match (it's referenced from a non-Ruby source, so it isn't dead).
+`--report-non-ruby` instead **reports** those candidates as low-confidence `review`
+items, tagged with the source that kept them alive — useful for auditing the broad,
+name-only matches:
+
+```bash
+sorbet-deadcode packs/my_pack/ --report-non-ruby --only review
+#   [review] [low] method Widget#display_name (refs=0 flags=kept_by:graphql_sdl)
+```
+
 ### False-Positive Handling
 
 `sorbet-deadcode` detects and suppresses several classes of dynamic dispatch that

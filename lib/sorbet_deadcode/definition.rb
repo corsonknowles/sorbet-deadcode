@@ -6,6 +6,11 @@ module SorbetDeadcode
 
     attr_reader :name, :full_name, :kind, :location, :owner_name, :co_located_names
 
+    # Optional metadata (not part of identity): set by a refiner in :report mode to record
+    # that this candidate was kept alive only by a non-Ruby reference of the given source
+    # (e.g. :graphql_sdl, :erb, :route). Surfaced by the Classifier as a low-confidence flag.
+    attr_accessor :kept_by
+
     # co_located_names: names of other definitions whose source is nested inside
     # this definition (e.g. `PARENT = [CHILD = 1]`). Removing this definition would
     # also remove them, so it must not be reported dead while any of them is alive.
@@ -18,6 +23,7 @@ module SorbetDeadcode
       @location = location
       @owner_name = owner_name
       @co_located_names = co_located_names
+      @kept_by = nil
     end
 
     def qualified_name
