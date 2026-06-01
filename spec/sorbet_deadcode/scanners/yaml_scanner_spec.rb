@@ -32,6 +32,33 @@ module SorbetDeadcode
         refs(**opts).select { |r| r.kind == :constant }.map(&:name)
       end
 
+      def test_extracts_constant_from_array_registry
+        write("config/scenarios.yml", <<~YAML)
+          - Demo::Scenarios::WithWidget
+          - Demo::Scenarios::WithGadget
+        YAML
+        names = constant_names
+        assert_includes names, "Demo::Scenarios::WithWidget"
+        assert_includes names, "WithWidget" # short name too
+        assert_includes names, "Demo::Scenarios::WithGadget"
+      end
+
+      def test_extracts_constant_from_scalar_value
+        write("config/handlers.yml", "handler: My::Event::Handler\n")
+        assert_includes constant_names, "My::Event::Handler"
+      end
+
+      def test_extracts_quoted_constant_array_item
+        write("config/scenarios.yml", %(- "Demo::Scenarios::Quoted"\n))
+        assert_includes constant_names, "Demo::Scenarios::Quoted"
+      end
+
+      def test_ignores_unqualified_capitalized_scalar
+        # `state: California` is data, not a class reference (no `::`).
+        write("config/x.yml", "state: California\n")
+        refute_includes constant_names, "California"
+      end
+
       def test_extracts_qualified_method_reference
         write("config/widget.yml", <<~YAML)
           some_field:

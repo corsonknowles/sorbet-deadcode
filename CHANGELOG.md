@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Fixed
+- **YAML class-registry configs are now recognized** (#76) — `YamlScanner` only matched
+  `key: Module::Class.method` values, so classes listed in registry configs (loaded via
+  `constantize`) were reported dead, e.g. `- Demo::Scenarios::WithWidget` array items or
+  `handler: My::Event::Handler` scalars. The scanner now emits a constant reference for a
+  namespaced constant used as a YAML value or sequence item (a `::` is required so ordinary
+  capitalized scalars like `state: California` aren't mistaken for class references).
 - **`Index#intersect` is now owner-precise** (#33) — it keyed candidates on `[name, kind]`,
   so two unrelated `#foo` methods on different classes counted as the same definition,
   inflating the cross-tool agreement set. It now keys on `[full_name, kind]`.
