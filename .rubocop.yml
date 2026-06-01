@@ -29,9 +29,11 @@ Lint/DuplicateBranch:
   Enabled: false
 
 # `assert refs.any? { ... }` reads fine and binds the block to the inner call as
-# intended; wrapping every spec assertion in parens is pure noise.
+# intended; wrapping every spec assertion in parens is pure noise. Keep the cop
+# on for lib/exe (where genuine ambiguity matters), just not for specs.
 Lint/AmbiguousBlockAssociation:
-  Enabled: false
+  Exclude:
+    - "spec/**/*"
 
 # Keyword args are often kept for interface symmetry (test helpers, finder
 # constructors) even when a given path doesn't read them.
