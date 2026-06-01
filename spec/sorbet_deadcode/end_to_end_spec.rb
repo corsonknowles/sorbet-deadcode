@@ -29,6 +29,36 @@ module SorbetDeadcode
     end
 
 
+    # #31: the --report-dynamic-dispatch flag must thread :report through to
+    # SorbetDeadcode.analyze so namespace-dispatched methods surface as candidates.
+    def test_report_dynamic_dispatch_flag_surfaces_namespace_dispatched_methods
+      Dir.mktmpdir do |dir|
+        File.write(File.join(dir, "s.rb"), <<~RUBY)
+          class MemberSerializer
+            def dump_company_member
+            end
+
+            def dump(member)
+              method_name = some_lookup(member)
+              __send__(method_name, member)
+            end
+          end
+        RUBY
+
+        base = "#{Shellwords.escape(RbConfig.ruby)} -I #{Shellwords.escape(LIB)} " \
+               "#{Shellwords.escape(EXE)} #{Shellwords.escape(dir)} --no-verify " \
+               "--project-root #{Shellwords.escape(dir)}"
+
+        without_flag = `#{base} 2>&1`
+        refute_match(/dump_company_member/, without_flag,
+          "namespace-dispatched method should be conservatively kept alive by default")
+
+        with_flag = `#{base} --report-dynamic-dispatch 2>&1`
+        assert_match(/dump_company_member/, with_flag,
+          "--report-dynamic-dispatch should surface the namespace-dispatched method")
+      end
+    end
+
     def test_app_only_analysis
       # Analyze only app code (no specs)
       results = SorbetDeadcode.analyze(

@@ -22,6 +22,7 @@ options = {
   show_confidence: false,
   classify: false,
   only_action: nil,
+  report_dynamic_dispatch: false,
 }
 
 OptionParser.new do |opts|
@@ -110,6 +111,13 @@ OptionParser.new do |opts|
     options[:only_action] = action.to_sym
   end
 
+  opts.on("--report-dynamic-dispatch",
+    "Report methods that are only kept alive by a variable-target send/public_send",
+    "in their namespace, instead of conservatively keeping them. They surface as",
+    "low-confidence candidates — pair with --classify or --confidence to review.") do
+    options[:report_dynamic_dispatch] = true
+  end
+
   opts.on("--reference-root DIR",
     "Also scan DIR for references (not definitions). Prevents public API",
     "methods from appearing dead when callers live outside --paths.") do |dir|
@@ -149,6 +157,14 @@ end
 # classify / confidence / render pipeline below so a cached index can be classified.
 from_index = !options[:load_index].nil?
 
+# Like --reference-root, dynamic-dispatch reporting is implemented only on the default
+# Prism analyze path; the LSP/hybrid/file-table finders and cached --report indexes
+# don't honor it. Warn instead of silently ignoring it.
+if options[:report_dynamic_dispatch] && (mode_count.positive? || from_index)
+  $stderr.puts "[sorbet-deadcode] --report-dynamic-dispatch only applies in the default mode; " \
+               "ignoring it for --lsp/--hybrid/--file-table/--report."
+end
+
 results = if from_index
   index = SorbetDeadcode::Index.load(options[:load_index])
   index = index.filter_paths(options[:filter_paths]) unless options[:filter_paths].empty?
@@ -180,6 +196,7 @@ else
     options[:paths],
     exclude_paths: options[:exclude_paths],
     reference_paths: options[:reference_root],
+    dynamic_dispatch: options[:report_dynamic_dispatch] ? :report : :exclude,
   )
 end
 
