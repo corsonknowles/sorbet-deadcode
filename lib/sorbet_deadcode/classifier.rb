@@ -1,8 +1,5 @@
 # frozen_string_literal: true
 
-require "shellwords"
-require "tempfile"
-
 module SorbetDeadcode
   # Post-processing classifier (issue #18). Annotates each dead-code candidate with
   # a confidence tier, a reference count, risk flags, and a suggested action — folding
@@ -116,32 +113,14 @@ module SorbetDeadcode
 
     # Returns { name => { path => occurrence_count } } for all matching files.
     def reference_files_by_name(names)
-      normal, special = names.partition { |n| !n.match?(/[?!=]$/) }
       result = Hash.new { |h, k| h[k] = Hash.new(0) }
-      collect_matches(normal, word_bounded: true, into: result)
-      collect_matches(special, word_bounded: false, into: result)
-      result
-    end
+      Ripgrep.search(names, project_root: @project_root, exclude_paths: @exclude_paths, with_filename: true) do |line|
+        path, token = split_match_line(line)
+        next unless path && token
 
-    def collect_matches(names, word_bounded:, into:)
-      return if names.empty?
-
-      pattern_file = write_pattern_file(names)
-      cmd = ["rg", "-F", "-f", pattern_file, "--with-filename", "-o"]
-      cmd << "-w" if word_bounded
-      @exclude_paths.each { |ep| cmd += ["--glob", "!#{glob_pattern(ep)}"] }
-      cmd << @project_root
-
-      IO.popen(cmd, err: File::NULL) do |io|
-        io.each_line do |line|
-          path, token = split_match_line(line)
-          next unless path && token
-
-          into[token][path] += 1
-        end
+        result[token][path] += 1
       end
-    ensure
-      File.delete(pattern_file) if pattern_file && File.exist?(pattern_file)
+      result
     end
 
     # rg --with-filename -o emits `path:matched`. Candidate names are simple
@@ -153,19 +132,6 @@ module SorbetDeadcode
       return [nil, nil] unless idx
 
       [stripped[0...idx], stripped[(idx + 1)..]]
-    end
-
-    def write_pattern_file(names)
-      file = Tempfile.new(["sorbet_deadcode_classify", ".txt"])
-      file.write(names.join("\n") + "\n")
-      file.close
-      file.path
-    end
-
-    def glob_pattern(path)
-      return path if path.include?("*")
-
-      "**/#{path}**"
     end
   end
 end

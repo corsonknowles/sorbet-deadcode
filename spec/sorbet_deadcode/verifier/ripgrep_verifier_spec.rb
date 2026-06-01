@@ -62,15 +62,6 @@ module SorbetDeadcode
         FileUtils.remove_entry(dir) if dir
       end
 
-      def test_glob_pattern_passes_through_explicit_globs
-        # A path that already contains a glob is used verbatim.
-        assert_equal "**/spec/**", @verifier.send(:glob_pattern, "**/spec/**")
-      end
-
-      def test_glob_pattern_wraps_plain_paths
-        assert_equal "**/spec/**", @verifier.send(:glob_pattern, "spec/")
-      end
-
       def test_truly_dead_methods_survive_verification
         candidates = SorbetDeadcode.analyze(
           File.join(FIXTURES_PATH, "app"),

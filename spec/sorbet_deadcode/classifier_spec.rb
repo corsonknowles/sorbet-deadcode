@@ -128,12 +128,6 @@ module SorbetDeadcode
       assert_equal 0, result.external_reference_count
     end
 
-    def test_glob_pattern_passes_through_explicit_glob
-      classifier = Classifier.new(project_root: @dir, exclude_paths: [])
-      assert_equal "**/spec/**", classifier.send(:glob_pattern, "**/spec/**")
-      assert_equal "**/spec/**", classifier.send(:glob_pattern, "spec/")
-    end
-
     def test_split_match_line_returns_nils_without_colon
       classifier = Classifier.new(project_root: @dir)
       assert_equal [nil, nil], classifier.send(:split_match_line, "no-colon-here\n")

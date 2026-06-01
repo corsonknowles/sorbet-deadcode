@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Changed
+- **Shared `Ripgrep` search helper** (#38) — the exclude-glob construction and the
+  predicate-name (`?`/`!`/`=`) word-boundary vs. literal splitting were duplicated in
+  `RipgrepVerifier` and `Classifier` and had to stay in sync for the predicate-name fix
+  to hold. Both now go through a single `Ripgrep.search` (plus `glob_pattern` /
+  `partition_by_predicate`), removing the drift risk. No behavior change.
 - **Refiners now apply to every analysis mode** (#30) — the route / YAML / ERB / RABL
   refiners previously ran only on the default Prism path, so routed controllers and
   template-/config-referenced methods resurfaced as false positives under `--lsp`,
