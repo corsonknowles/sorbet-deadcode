@@ -27,11 +27,18 @@ gem "sorbet-deadcode", group: :development
 ## Usage
 
 ```bash
-# Recommended: scan a pack with full cross-reference context and ripgrep verification
-sorbet-deadcode packs/my_pack/ --reference-root packs/ --project-root .
+# Scan a pack. The project root is auto-detected from the git toplevel, so ripgrep
+# verification and the non-Ruby refiners run repo-wide even from inside a subdirectory.
+sorbet-deadcode packs/my_pack/
 
-# Scan the current directory (quick single-scope check)
+# Add type-aware cross-reference context for extra precision in a monorepo
+sorbet-deadcode packs/my_pack/ --reference-root packs/
+
+# Scan the current directory
 sorbet-deadcode .
+
+# Scope verification/refiners to the cwd instead of the git root (or outside a repo)
+sorbet-deadcode packs/my_pack/ --isolated
 
 # Exclude specs from definitions (non-production dead code only)
 sorbet-deadcode --no-specs packs/my_pack/
@@ -66,12 +73,14 @@ are not falsely reported as dead.
 # Without: only references from within packs/my_pack/ are considered
 sorbet-deadcode packs/my_pack/
 
-# With: references from all 75K pack files are considered
-sorbet-deadcode packs/my_pack/ --reference-root packs/ --project-root .
+# With: references from all pack files are considered
+sorbet-deadcode packs/my_pack/ --reference-root packs/
 ```
 
-The `--project-root` enables automatic `config/routes.rb` scanning to keep
-controller actions alive (see [Route Scanning](#route-scanning) below).
+`--reference-root` adds *type-aware* cross-references (precise receiver matching). The
+repo-wide ripgrep verification pass (on by default, scoped to the auto-detected git root)
+already catches the *name-based* case, so `--reference-root` is a precision add-on rather
+than a correctness requirement.
 
 ### Reference Root (scanning callers outside your definition path)
 
@@ -85,7 +94,7 @@ definitions are collected from those files.
 sorbet-deadcode lib/ --reference-root .
 
 # In a monorepo: definitions from one pack, references from all packs
-sorbet-deadcode packs/my_pack/ --reference-root packs/ --project-root .
+sorbet-deadcode packs/my_pack/ --reference-root packs/
 ```
 
 ### Index & Report (analyze once, slice many times)

@@ -59,6 +59,39 @@ module SorbetDeadcode
       end
     end
 
+    # Auto-root: run with no --project-root from inside a subdirectory of a git repo. The
+    # project root should default to the git toplevel so ripgrep verification sees a caller
+    # living in a sibling directory (outside the analyzed path) and does not report the
+    # method dead. --isolated scopes back to the cwd and reveals it as a false positive.
+    def test_project_root_defaults_to_git_toplevel_for_repo_wide_verification
+      Dir.mktmpdir do |repo|
+        FileUtils.mkdir_p(File.join(repo, "packs/a"))
+        FileUtils.mkdir_p(File.join(repo, "packs/b"))
+        File.write(File.join(repo, "packs/a/foo.rb"), <<~RUBY)
+          class Foo
+            def cross_pack_method; end
+          end
+        RUBY
+        File.write(File.join(repo, "packs/b/bar.rb"), <<~RUBY)
+          class Bar
+            def run = Foo.new.cross_pack_method
+          end
+        RUBY
+        system("git", "init", "-q", repo, out: File::NULL, err: File::NULL)
+
+        pack_a = File.join(repo, "packs/a")
+        base = "#{Shellwords.escape(RbConfig.ruby)} -I #{Shellwords.escape(LIB)} #{Shellwords.escape(EXE)} ."
+
+        auto = `cd #{Shellwords.escape(pack_a)} && #{base} 2>&1`
+        refute_match(/cross_pack_method/, auto,
+          "auto git-root project root should verify repo-wide and keep the cross-pack method alive")
+
+        isolated = `cd #{Shellwords.escape(pack_a)} && #{base} --isolated 2>&1`
+        assert_match(/cross_pack_method/, isolated,
+          "--isolated should scope verification to the cwd and surface the method")
+      end
+    end
+
     def test_app_only_analysis
       # Analyze only app code (no specs)
       results = SorbetDeadcode.analyze(
