@@ -208,6 +208,16 @@ module SorbetDeadcode
         assert_equal ["real"], names
       end
 
+      def test_captures_superclass_short_name
+        defs = collect(<<~RUBY)
+          class Child < Some::Base
+          end
+        RUBY
+
+        child = defs.find { |d| d.name == "Child" }
+        assert_equal "Base", child.superclass_name
+      end
+
       def test_t_enum_values_are_not_recorded_as_definitions
         defs = collect(<<~RUBY)
           class Status < T::Enum

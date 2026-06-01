@@ -1065,6 +1065,31 @@ module SorbetDeadcode
         assert_equal "Widget", ship.receiver_type
       end
 
+      def test_descendants_emits_dynamic_subclasses_reference
+        refs = collect("Base.descendants.each(&:run)")
+        ref = refs.find { |r| r.kind == :dynamic_subclasses }
+        assert ref, "expected a dynamic_subclasses reference"
+        assert_equal "Base", ref.name
+      end
+
+      def test_subclasses_on_namespaced_constant_uses_short_name
+        refs = collect("Foo::Bar.subclasses")
+        ref = refs.find { |r| r.kind == :dynamic_subclasses }
+        assert_equal "Bar", ref.name
+      end
+
+      def test_descendants_on_non_constant_receiver_is_ignored
+        refs = collect("registry.descendants")
+        refute(refs.any? { |r| r.kind == :dynamic_subclasses })
+      end
+
+      def test_descendants_unwraps_sorbet_cast_receiver
+        # Common Sorbet idiom: T.unsafe(Base).descendants
+        refs = collect("T.unsafe(Base).descendants.map(&:name)")
+        ref = refs.find { |r| r.kind == :dynamic_subclasses }
+        assert_equal "Base", ref.name
+      end
+
       private
 
       def collect(source, type_resolver: nil)

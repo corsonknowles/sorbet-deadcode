@@ -186,6 +186,7 @@ would otherwise produce false positives:
 |---------|---------|----------|
 | Interpolated dispatch | `public_send("dump_#{type}")` | Keeps all `dump_*` methods alive |
 | Variable dispatch | `__send__(method_name)` | Keeps all methods in the namespace alive |
+| Subclass discovery | `Base.descendants` / `T.unsafe(Base).subclasses` | Keeps every (transitive) subclass of `Base` alive |
 | Inline constant nesting | `PARENT = [CHILD = 1]` | Never reports `PARENT` dead while `CHILD` is alive |
 | Rails callbacks | `validate :check_name`, `before_save :normalize` | Keeps callback targets alive |
 | `accepts_nested_attributes_for` | `accepts_nested_attributes_for :items` | Keeps `items_attributes=` overrides alive |

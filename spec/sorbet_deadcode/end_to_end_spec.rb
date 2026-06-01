@@ -77,10 +77,15 @@ module SorbetDeadcode
             def run = Foo.new.cross_pack_method
           end
         RUBY
-        system("git", "init", "-q", repo, out: File::NULL, err: File::NULL)
+        # Hermetic git env: ignore any ambient global/system config (e.g. safe.directory or
+        # a HOME left by another test) so git toplevel detection is deterministic.
+        git_env = { "GIT_CONFIG_GLOBAL" => File::NULL, "GIT_CONFIG_SYSTEM" => File::NULL, "HOME" => repo }
+        assert system(git_env, "git", "init", "-q", repo, out: File::NULL, err: File::NULL),
+          "git init should succeed"
 
         pack_a = File.join(repo, "packs/a")
-        base = "#{Shellwords.escape(RbConfig.ruby)} -I #{Shellwords.escape(LIB)} #{Shellwords.escape(EXE)} ."
+        env_prefix = "GIT_CONFIG_GLOBAL=#{File::NULL} GIT_CONFIG_SYSTEM=#{File::NULL} HOME=#{Shellwords.escape(repo)}"
+        base = "#{env_prefix} #{Shellwords.escape(RbConfig.ruby)} -I #{Shellwords.escape(LIB)} #{Shellwords.escape(EXE)} ."
 
         auto = `cd #{Shellwords.escape(pack_a)} && #{base} 2>&1`
         refute_match(/cross_pack_method/, auto,

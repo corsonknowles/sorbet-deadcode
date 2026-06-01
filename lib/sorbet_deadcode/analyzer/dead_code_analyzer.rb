@@ -153,7 +153,10 @@ module SorbetDeadcode
             # is alive — its class definition should not be reported dead any more than
             # its methods would be.
             ref_index[:dynamic_namespaces].include?(definition.name) ||
-            ref_index[:dynamic_namespaces].include?(definition.full_name)
+            ref_index[:dynamic_namespaces].include?(definition.full_name) ||
+            # A subclass of a base reflected over via `.descendants` / `.subclasses` is
+            # discovered and used at runtime, so its class definition isn't dead.
+            ref_index[:reflected_subclasses].include?(definition.full_name)
         when :constant
           ref_index[:constants].include?(definition.name) ||
             ref_index[:constants].include?(definition.full_name) ||
@@ -235,6 +238,7 @@ module SorbetDeadcode
         method_prefixes = Set.new
         method_suffixes = Set.new
         dynamic_namespaces = Set.new
+        dynamic_subclasses = Set.new
 
         @references.each do |ref|
           case ref.kind
@@ -252,6 +256,8 @@ module SorbetDeadcode
             method_suffixes << ref.name
           when :dynamic_namespace
             dynamic_namespaces << ref.name
+          when :dynamic_subclasses
+            dynamic_subclasses << ref.name
           end
         end
 
@@ -262,7 +268,34 @@ module SorbetDeadcode
           method_prefixes: method_prefixes,
           method_suffixes: method_suffixes,
           dynamic_namespaces: dynamic_namespaces,
+          # full_names of classes kept alive via .descendants/.subclasses (computed below).
+          reflected_subclasses: reflected_subclasses(dynamic_subclasses),
         }
+      end
+
+      # Transitive closure of subclasses of any base reflected over via .descendants /
+      # .subclasses. Walks the (short-name) superclass → children map so that a subclass of
+      # a subclass is also kept alive. Matching is by demodulized name (the analyzer doesn't
+      # fully resolve constants), consistent with the other name-based liveness checks.
+      def reflected_subclasses(base_names)
+        return Set.new if base_names.empty?
+
+        children = Hash.new { |h, k| h[k] = [] }
+        @definitions.each do |d|
+          children[d.superclass_name] << d if d.kind == :class && d.superclass_name
+        end
+
+        alive = Set.new
+        queue = base_names.to_a
+        until queue.empty?
+          base = queue.shift
+          children[base].each do |child|
+            next unless alive.add?(child.full_name)
+
+            queue << child.name # a kept subclass is itself a base for its own subclasses
+          end
+        end
+        alive
       end
     end
 

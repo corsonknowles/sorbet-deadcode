@@ -9,7 +9,10 @@ module SorbetDeadcode
     # dynamic_namespace: dynamic dispatch on a non-literal target (variable/call) inside
     #   a namespace, e.g. __send__(method_name) inside MemberSerializer => the whole
     #   namespace's methods may be reached.
-    KINDS = %i[method constant method_prefix method_suffix dynamic_namespace].freeze
+    # dynamic_subclasses: a `Base.descendants` / `Base.subclasses` call — every subclass of
+    #   `Base` may be discovered and used at runtime, so they must not be reported dead.
+    #   The name is the receiver's (short) constant name.
+    KINDS = %i[method constant method_prefix method_suffix dynamic_namespace dynamic_subclasses].freeze
 
     attr_reader :name, :location, :kind, :receiver_type
 

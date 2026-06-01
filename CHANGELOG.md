@@ -10,6 +10,13 @@
   Mirrors `--report-dynamic-dispatch` (#31); default behavior (hard-exclude) is unchanged.
 
 ### Fixed
+- **Classes discovered via `.descendants` / `.subclasses` are no longer reported dead** (#69) —
+  frameworks often enumerate subclasses with `Base.descendants` (or `T.unsafe(Base).descendants`)
+  and invoke them by reflection, so no subclass is ever named in Ruby. The collector now emits a
+  `:dynamic_subclasses` reference for such calls (unwrapping `T.unsafe`/`T.must`/`T.let`/`T.cast`),
+  and the analyzer keeps every subclass of a reflected base alive — transitively, by demodulized
+  superclass name. Requires the `.descendants` call site to be in the analyzed scope (or
+  `--reference-root`).
 - **`T::Enum` values are no longer reported dead** (#70) — enum values declared as
   `Active = new('active')` inside a `T::Enum` subclass's `enums do` block are reached via
   `.values` / `.deserialize(<string>)` / serialization, not by their Ruby constant, so they

@@ -23,6 +23,7 @@ module SorbetDeadcode
           full_name: full_name,
           kind: :class,
           location: format_location(node.location),
+          superclass_name: superclass_short_name(node),
         )
         @namespace_stack.push(name)
         @enum_stack.push(t_enum_subclass?(node))
@@ -127,6 +128,11 @@ module SorbetDeadcode
       # `class Foo < T::Enum` (also matches the fully-qualified `< ::T::Enum`).
       def t_enum_subclass?(node)
         node.superclass&.slice&.delete_prefix("::") == "T::Enum"
+      end
+
+      # Short (demodulized) name of a class's direct superclass, e.g. `< A::Base` => "Base".
+      def superclass_short_name(node)
+        node.superclass&.slice&.split("::")&.last
       end
 
       # A constant assigned a bare `new(...)` inside a T::Enum subclass — i.e. an enum value.
