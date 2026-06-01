@@ -62,6 +62,22 @@ module SorbetDeadcode
       assert_equal ["shared"], result.dead_definitions.map(&:name)
     end
 
+    def test_intersect_is_owner_precise_for_same_named_methods
+      # Foo#process and Bar#process share a name but are different methods; they must
+      # not be treated as a shared dead definition.
+      index_a = Index.new(dead_definitions: [make_def("process", owner_name: "Foo")], paths: [])
+      index_b = Index.new(dead_definitions: [make_def("process", owner_name: "Bar")], paths: [])
+
+      assert_empty index_a.intersect(index_b).dead_definitions
+    end
+
+    def test_intersect_matches_same_owner_and_name
+      index_a = Index.new(dead_definitions: [make_def("process", owner_name: "Foo")], paths: [])
+      index_b = Index.new(dead_definitions: [make_def("process", owner_name: "Foo")], paths: [])
+
+      assert_equal ["Foo#process"], index_a.intersect(index_b).dead_definitions.map(&:full_name)
+    end
+
     def test_intersect_respects_kind
       method_def = make_def("foo", kind: :method)
       const_def  = make_def("foo", kind: :constant)

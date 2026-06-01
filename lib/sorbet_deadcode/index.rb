@@ -66,10 +66,12 @@ module SorbetDeadcode
     end
 
     # Intersect this index with another (e.g. from Spoom).
-    # Returns definitions whose name+kind appear in both.
+    # Returns definitions whose fully-qualified name + kind appear in both. Keying on
+    # full_name (not just name) keeps the intersection owner-precise: two unrelated `#foo`
+    # methods on different classes are not treated as the same definition.
     def intersect(other)
-      other_keys = Set.new(other.dead_definitions.map { |d| [d.name, d.kind] })
-      shared = @dead_definitions.select { |d| other_keys.include?([d.name, d.kind]) }
+      other_keys = Set.new(other.dead_definitions.map { |d| [d.full_name, d.kind] })
+      shared = @dead_definitions.select { |d| other_keys.include?([d.full_name, d.kind]) }
       self.class.new(dead_definitions: shared, paths: @paths, exclude_paths: @exclude_paths)
     end
 
