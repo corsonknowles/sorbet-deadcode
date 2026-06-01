@@ -17,6 +17,12 @@
   references.
 
 ### Changed
+- **GraphQL SDL refiner is now directory-scoped** (#60) — each `.graphql` document's field
+  names only keep resolver methods alive when those methods are defined at or below the
+  document's directory (its subgraph root). Previously the field names from every schema
+  were pooled into one repo-wide name set, so a generic field (`id`, `name`, `status`,
+  `nodes`) in one subgraph could mask a same-named method in an unrelated directory. Legit
+  per-subgraph suppression is unchanged.
 - **Default output is now the classified, confidence/action-tiered view** (#62) — a no-flag
   run annotates each candidate with a suggested action (`safe_delete` / `delete_with_spec` /
   `review`) and confidence tier (`high` / `medium` / `low`), hiding live (`keep`) candidates.

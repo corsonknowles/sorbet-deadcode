@@ -19,10 +19,12 @@ module SorbetDeadcode
         File.write(path, content)
       end
 
-      def make_def(name, kind: :method, owner: "UserType")
+      # Definition path is absolute (under @dir) so directory-scoping can compare it against
+      # the (absolute) schema directories the scanner reports.
+      def make_def(name, kind: :method, owner: "UserType", path: "app/graphql/user_type.rb")
         Definition.new(
           name: name, full_name: "#{owner}##{name}", kind: kind,
-          location: "app/graphql/user_type.rb:1", owner_name: owner,
+          location: "#{File.join(@dir, path)}:1", owner_name: owner,
         )
       end
 
@@ -31,32 +33,32 @@ module SorbetDeadcode
       end
 
       def test_removes_resolver_method_referenced_in_sdl
-        write_graphql("schema/user.graphql", "type User { fullName: String }\n")
+        write_graphql("app/graphql/schema.graphql", "type User { fullName: String }\n")
         defn = make_def("full_name")
         assert_empty refiner.refine([defn])
       end
 
       def test_keeps_method_not_referenced_in_sdl
-        write_graphql("schema/user.graphql", "type User { fullName: String }\n")
+        write_graphql("app/graphql/schema.graphql", "type User { fullName: String }\n")
         defn = make_def("genuinely_dead")
         assert_equal [defn], refiner.refine([defn])
       end
 
       def test_matching_is_name_only_across_owners
-        write_graphql("schema/user.graphql", "type User { fullName: String }\n")
+        write_graphql("app/graphql/schema.graphql", "type User { fullName: String }\n")
         defn = make_def("full_name", owner: "SomeOtherType")
         assert_empty refiner.refine([defn])
       end
 
       def test_does_not_remove_non_method_kinds
         # A constant whose name coincides with a field must not be removed by a method ref.
-        write_graphql("schema/user.graphql", "type User { fullName: String }\n")
-        const = Definition.new(name: "full_name", full_name: "Full_name", kind: :constant, location: "f:1")
+        write_graphql("app/graphql/schema.graphql", "type User { fullName: String }\n")
+        const = make_def("full_name", kind: :constant, owner: "Full_name")
         assert_equal [const], refiner.refine([const])
       end
 
       def test_returns_unchanged_when_no_sdl_references
-        write_graphql("schema/empty.graphql", "scalar DateTime\n")
+        write_graphql("app/graphql/empty.graphql", "scalar DateTime\n")
         defn = make_def("full_name")
         assert_equal [defn], refiner.refine([defn])
       end
@@ -65,11 +67,32 @@ module SorbetDeadcode
         assert_equal [], refiner.refine([])
       end
 
+      # ---- #60: directory scoping ------------------------------------------
+
+      def test_field_is_scoped_to_its_schema_directory_subtree
+        # A schema under packs/a/ keeps a resolver defined under packs/a/ alive, but not a
+        # same-named method defined in an unrelated directory (packs/b/).
+        write_graphql("packs/a/schema.graphql", "type User { fullName: String }\n")
+        in_a = make_def("full_name", owner: "TypeA", path: "packs/a/resolver.rb")
+        in_b = make_def("full_name", owner: "TypeB", path: "packs/b/resolver.rb")
+
+        refined = refiner.refine([in_a, in_b])
+
+        refute_includes refined, in_a, "resolver under the schema's directory should be kept alive"
+        assert_includes refined, in_b, "same-named method in an unrelated directory should not leak"
+      end
+
+      def test_generic_field_name_does_not_leak_across_subgraphs
+        # Generic names (id/name/status) are exactly what over-matched before scoping.
+        write_graphql("packs/a/schema.graphql", "type User { name: String }\n")
+        unrelated = make_def("name", path: "packs/b/widget.rb")
+        assert_equal [unrelated], refiner.refine([unrelated])
+      end
+
       # ---- integration: fixture .graphql + Ruby resolver --------------------
 
       def test_full_pipeline_keeps_resolver_method_alive
-        FileUtils.mkdir_p(File.join(@dir, "app", "graphql"))
-        write_graphql("schema/user.graphql", <<~GQL)
+        write_graphql("app/graphql/schema.graphql", <<~GQL)
           type User {
             fullName: String!
           }
@@ -90,8 +113,7 @@ module SorbetDeadcode
       end
 
       def test_composes_with_analyze_and_refine
-        FileUtils.mkdir_p(File.join(@dir, "app", "graphql"))
-        write_graphql("schema/user.graphql", "type User { fullName: String! }\n")
+        write_graphql("app/graphql/schema.graphql", "type User { fullName: String! }\n")
         File.write(File.join(@dir, "app", "graphql", "user_type.rb"), <<~RUBY)
           class UserType
             def full_name; end
