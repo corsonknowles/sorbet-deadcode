@@ -229,6 +229,49 @@ module SorbetDeadcode
         assert_includes refs.select { |r| r.kind == :method }.map(&:name), "load_assignee"
       end
 
+      def test_graphql_argument_loads_emits_loader_reference
+        refs = collect(<<~RUBY)
+          class SaveScorecard < BaseMutation
+            argument :job_applicant_id, ID, required: true, loads: Types::JobApplicantType
+          end
+        RUBY
+
+        # graphql-ruby strips the `_id` suffix and calls `load_job_applicant`.
+        assert_includes refs.select { |r| r.kind == :method }.map(&:name), "load_job_applicant"
+      end
+
+      def test_graphql_argument_loads_without_id_suffix
+        refs = collect(<<~RUBY)
+          class M < BaseMutation
+            argument :widget, ID, loads: Types::WidgetType
+          end
+        RUBY
+
+        assert_includes refs.select { |r| r.kind == :method }.map(&:name), "load_widget"
+      end
+
+      def test_graphql_loads_with_non_symbol_name_emits_no_loader
+        refs = collect(<<~RUBY)
+          class T
+            field some_dynamic_name, loads: Types::X, method: :resolver_m
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "resolver_m"           # method: still resolved
+        refute(names.any? { |n| n.start_with?("load_") }) # no loader without a symbol name
+      end
+
+      def test_graphql_string_option_key_is_skipped
+        refs = collect(<<~'RUBY')
+          class T < BaseMutation
+            argument :x, ID, "method" => :should_be_ignored
+          end
+        RUBY
+
+        refute_includes refs.select { |r| r.kind == :method }.map(&:name), "should_be_ignored"
+      end
+
       def test_delegate_with_hash_splat_does_not_crash
         refs = collect(<<~RUBY)
           opts = { to: :target }

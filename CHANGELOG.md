@@ -3,6 +3,14 @@
 ## Unreleased
 
 ### Fixed
+- **graphql-ruby `loads:` loader methods** (#53) — an `argument :foo_id, loads: SomeType`
+  causes graphql-ruby to invoke a `load_foo` method (the argument name with a trailing
+  `_id` stripped, prefixed with `load_`). The collector now emits that reference so loader
+  methods aren't reported dead. Also hardened the GraphQL option-key parsing to use
+  `Prism::SymbolNode#unescaped` with a `SymbolNode` guard instead of
+  `slice.delete_suffix(":")` (robust against quoted/interpolated keys).
+
+### Fixed
 - **Dynamic-namespace refs now use the fully-qualified name** — `mailer_preview` (and the new
   generator) detection emitted the dynamic-namespace reference using the class's *short* name
   (`node.constant_path.slice`), which never matched the fully-qualified `owner_name` recorded
