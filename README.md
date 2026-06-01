@@ -47,6 +47,39 @@ sorbet-deadcode packs/my_pack/ --only safe_delete
 sorbet-deadcode packs/my_pack/ --plain
 ```
 
+### Default vs. preferred (accuracy/speed trade-off)
+
+There are two recommended ways to run, depending on how much time you have:
+
+**Default (fast — routine, CI, agents):**
+
+```bash
+sorbet-deadcode packs/my_pack/
+```
+
+The no-flag run is already the optimal *fast* pipeline: type-aware Prism analysis, **repo-wide
+ripgrep verification** (project root auto-detected from the git toplevel), all non-Ruby
+refiners (routes / YAML / ERB / RABL / GraphQL SDL), confidence/action tiers, and a
+recently-added downgrade. It returns in seconds-to-about-a-minute and biases conservative
+(favors false negatives over false positives), so the `safe_delete` list is safe to act on.
+The verification pass catches cross-pack callers **by name**.
+
+**Preferred (most accurate — a thorough audit before bulk deletion):**
+
+```bash
+sorbet-deadcode packs/my_pack/ --reference-root .
+```
+
+Adds **type-aware** cross-reference resolution: it parses the *entire* reference root so a
+method called on a known receiver type in another pack (or reached only from a `.descendants`
+call site elsewhere) is matched precisely, not just by name. This is the most accurate mode
+but parses the whole tree, so it takes **minutes** on a large monorepo.
+
+`--reference-root` is **opt-in by design** — auto-enabling it would make the default slow,
+and the name-based verification pass already covers the common cross-pack case. Reach for it
+when you're about to delete in bulk and want maximum confidence. For repeated slicing, run it
+once with `--index tmp/deadcode.json` and `--report` against the cached index.
+
 ### Default output: confidence/action tiers
 
 By default, each candidate is annotated with a **suggested action** and **confidence tier**
