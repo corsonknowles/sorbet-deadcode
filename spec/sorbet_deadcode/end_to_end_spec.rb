@@ -92,6 +92,38 @@ module SorbetDeadcode
       end
     end
 
+    def run_cli(dir, *flags)
+      cmd = "#{Shellwords.escape(RbConfig.ruby)} -I #{Shellwords.escape(LIB)} " \
+            "#{Shellwords.escape(EXE)} #{Shellwords.escape(dir)} " \
+            "--project-root #{Shellwords.escape(dir)} #{flags.join(' ')} 2>&1"
+      `#{cmd}`
+    end
+
+    # Default view is now the classified, confidence/action-tiered output (#62).
+    def test_default_output_is_classified_and_tiered
+      Dir.mktmpdir do |dir|
+        File.write(File.join(dir, "m.rb"), <<~RUBY)
+          class M
+            def used; end
+            def dead_one; end
+            def entry = used
+          end
+        RUBY
+        out = run_cli(dir)
+        assert_match(/\[safe_delete\]\s+\[high\]\s+method M#dead_one/, out,
+          "default output should show suggested action + confidence tier")
+      end
+    end
+
+    def test_plain_flag_produces_flat_list
+      Dir.mktmpdir do |dir|
+        File.write(File.join(dir, "m.rb"), "class M\n  def dead_one; end\nend\n")
+        out = run_cli(dir, "--plain")
+        assert_match(/method M#dead_one/, out)
+        refute_match(/\[safe_delete\]/, out, "--plain should not emit the classified tier tags")
+      end
+    end
+
     def test_app_only_analysis
       # Analyze only app code (no specs)
       results = SorbetDeadcode.analyze(
