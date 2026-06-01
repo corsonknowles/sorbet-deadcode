@@ -75,13 +75,13 @@ module SorbetDeadcode
 
     private
 
-    def serialize_definition(d)
+    def serialize_definition(definition)
       {
-        "name" => d.name,
-        "full_name" => d.full_name,
-        "kind" => d.kind.to_s,
-        "location" => d.location,
-        "owner_name" => d.owner_name,
+        "name" => definition.name,
+        "full_name" => definition.full_name,
+        "kind" => definition.kind.to_s,
+        "location" => definition.location,
+        "owner_name" => definition.owner_name,
       }
     end
 

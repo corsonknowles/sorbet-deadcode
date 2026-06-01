@@ -53,7 +53,6 @@ module SorbetDeadcode
         before_action after_action around_action
         prepend_before_action append_before_action
         skip_before_action
-        after_update before_update
       ].to_set.freeze
 
       def initialize(file_path, type_resolver: nil)

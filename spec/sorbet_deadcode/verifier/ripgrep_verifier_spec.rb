@@ -50,7 +50,6 @@ module SorbetDeadcode
           Model.new.valid?
         RUBY
 
-        candidates = SorbetDeadcode.analyze(File.join(dir, "app"))
         verifier = RipgrepVerifier.new(project_root: dir)
 
         all_candidates = SorbetDeadcode.analyze(dir)

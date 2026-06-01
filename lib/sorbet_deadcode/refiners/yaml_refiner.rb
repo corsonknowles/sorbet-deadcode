@@ -16,6 +16,8 @@ module SorbetDeadcode
     # of a `class << self` method as its fully-qualified constant, which matches the receiver
     # written in the YAML.)
     class YamlRefiner
+      METHOD_KINDS = %i[method attr_reader attr_writer].freeze
+
       def initialize(project_root, keys: Scanners::YamlScanner::DEFAULT_KEYS,
                      bare_keys: Scanners::YamlScanner::DEFAULT_BARE_KEYS,
                      globs: Scanners::YamlScanner::DEFAULT_GLOBS)
@@ -39,8 +41,6 @@ module SorbetDeadcode
       end
 
       private
-
-      METHOD_KINDS = %i[method attr_reader attr_writer].freeze
 
       def build_referenced_set
         refs = Scanners::YamlScanner.new(

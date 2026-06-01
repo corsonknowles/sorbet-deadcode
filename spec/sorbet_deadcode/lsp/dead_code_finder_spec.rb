@@ -53,7 +53,7 @@ module SorbetDeadcode
         # Every definition reports zero references => all dead. This exercises
         # detect_column for module, class, constant, attr_reader, attr_writer,
         # and method kinds.
-        client = MockClient.new(Hash.new([]))
+        client = MockClient.new(Hash.new { [] })
 
         results = run_finder(dir, client)
         dead_names = results.map(&:name)
@@ -262,7 +262,6 @@ module SorbetDeadcode
         client = MockClient.new({})
         bad = make_defn("ghost", :method, "no_colon_in_location")
         finder = DeadCodeFinder.new(project_root: dir, paths: [dir], parallel: 2)
-        real_collect = finder.method(:collect_files)
         finder.define_singleton_method(:find_dead) do |c, defs|
           send(:find_dead_parallel, c, defs + [bad])
         end

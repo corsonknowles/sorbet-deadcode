@@ -6,6 +6,12 @@ require "open3"
 module SorbetDeadcode
   module Sorbet
     class FileTableAnalyzerSpec < Minitest::Test
+      FakeStatus = Struct.new(:ok) do
+        def success?
+          ok
+        end
+      end
+
       SAMPLE_SYMBOL_TABLE = {
         "id" => 1,
         "name" => { "kind" => "CONSTANT", "name" => "<root>" },
@@ -424,12 +430,6 @@ module SorbetDeadcode
       end
 
       private
-
-      FakeStatus = Struct.new(:ok) do
-        def success?
-          ok
-        end
-      end
 
       def build_analyzer
         FileTableAnalyzer.new(project_root: "/tmp", paths: ["/tmp"], exclude_paths: [])

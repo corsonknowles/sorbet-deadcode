@@ -10,6 +10,8 @@ module SorbetDeadcode
     # any dead method whose name is referenced from a template is kept alive. Constants
     # named in templates keep the corresponding class/module alive.
     class ErbRefiner
+      METHOD_KINDS = %i[method attr_reader attr_writer].freeze
+
       def initialize(project_root, globs: Scanners::ErbScanner::DEFAULT_GLOBS)
         @project_root = File.expand_path(project_root)
         @globs = globs
@@ -27,8 +29,6 @@ module SorbetDeadcode
       end
 
       private
-
-      METHOD_KINDS = %i[method attr_reader attr_writer].freeze
 
       def build_referenced_set
         refs = Scanners::ErbScanner.new(@project_root, globs: @globs).references
