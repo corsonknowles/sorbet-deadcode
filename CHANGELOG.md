@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Changed
+- **Project root now defaults to the git toplevel** (#62) — previously `--project-root`
+  defaulted to the current directory, so running from inside a pack/subdirectory scoped
+  ripgrep verification and the non-Ruby refiners to that subtree and reported
+  cross-pack-referenced methods as dead. The root is now auto-detected from the enclosing
+  git repository, so a no-flag run verifies references repo-wide regardless of where it's
+  invoked. Pass `--isolated` (or an explicit `--project-root`) to opt out; outside a git
+  checkout it falls back to the current directory.
+
 ### Added
 - **GraphQL SDL (`.graphql`) scanner/refiner** (#27, completes epic #4) — standalone
   `*.graphql` / `*.graphqls` schema documents (e.g. checked-in federation/subgraph

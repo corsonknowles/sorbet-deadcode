@@ -4,6 +4,14 @@
 require "sorbet_deadcode"
 require "optparse"
 
+# Absolute path of the enclosing git repository, or nil when not in a checkout.
+def git_toplevel
+  root = IO.popen(["git", "rev-parse", "--show-toplevel"], err: File::NULL, &:read).strip
+  $?.success? && !root.empty? ? root : nil
+rescue StandardError
+  nil
+end
+
 options = {
   paths: [],
   exclude_paths: ["/spec/", "/test/"],
@@ -13,7 +21,8 @@ options = {
   file_table: false,
   verify: true,
   parallel: 10,
-  project_root: ".",
+  project_root: nil,
+  isolated: false,
   reference_root: nil,
   output_index: nil,
   load_index: nil,
@@ -56,8 +65,16 @@ OptionParser.new do |opts|
     options[:parallel] = n
   end
 
-  opts.on("--project-root DIR", "Project root where sorbet/ lives (default: .)") do |dir|
+  opts.on("--project-root DIR",
+    "Root for ripgrep verification and non-Ruby refiners (default: the git toplevel,",
+    "so references are checked repo-wide regardless of the current directory).") do |dir|
     options[:project_root] = dir
+  end
+
+  opts.on("--isolated",
+    "Don't auto-detect the git root; scope verification/refiners to the current",
+    "directory instead. Use for non-git trees or to deliberately limit scope.") do
+    options[:isolated] = true
   end
 
   opts.on("--no-routes", "Disable automatic config/routes.rb scanning for controller action references.") do
@@ -142,6 +159,15 @@ end.parse!
 options[:paths] = ARGV.empty? ? ["."] : ARGV
 options[:filter_paths] = options[:paths] if options[:load_index]
 options[:exclude_paths] = [] if options[:include_specs]
+
+# Default the project root to the git toplevel so ripgrep verification and the non-Ruby
+# refiners operate repo-wide even when run from inside a pack/subdirectory. Without this,
+# project_root defaults to the cwd, scoping verification to that subtree and reporting
+# cross-pack-referenced methods as dead (a false-positive source). --isolated or an
+# explicit --project-root opts out.
+if options[:project_root].nil?
+  options[:project_root] = options[:isolated] ? "." : (git_toplevel || ".")
+end
 
 mode_count = [options[:lsp], options[:hybrid], options[:file_table]].count(true)
 if mode_count > 1
