@@ -9,8 +9,22 @@
   were false positives. The collector no longer records them as definitions. Plain constants
   inside an enum class, and `= new(...)` assignments outside a `T::Enum`, are unaffected.
   Handles both `< T::Enum` and `< ::T::Enum`.
+- **RouteScanner now recognizes `controller:`/`action:` and hash-rocket route forms** (#67) —
+  previously only `to: 'controller#action'` was parsed, so routes written as
+  `get '/x', controller: 'admin/widgets', action: 'show'`, `get :show, controller: :widgets`,
+  or `get '/x' => 'widgets#index'` (common in `draw`-ed split route files) were ignored and
+  their controllers/actions reported dead. All three forms now emit the action + controller
+  references.
 
 ### Changed
+- **Default output is now the classified, confidence/action-tiered view** (#62) — a no-flag
+  run annotates each candidate with a suggested action (`safe_delete` / `delete_with_spec` /
+  `review`) and confidence tier (`high` / `medium` / `low`), hiding live (`keep`) candidates.
+  This makes the default safe to act on programmatically (auto-delete `safe_delete`/`high`,
+  route the rest to review) and surfaces spec-only candidates that the previous verify-only
+  default silently dropped. Classification runs over the pre-verify candidates (its own
+  ripgrep pass supersedes the standalone verify). Use `--plain` for the old flat list;
+  `--no-verify` (no ripgrep) implies `--plain`. `--only ACTION` no longer needs `--classify`.
 - **Project root now defaults to the git toplevel** (#62) — previously `--project-root`
   defaulted to the current directory, so running from inside a pack/subdirectory scoped
   ripgrep verification and the non-Ruby refiners to that subtree and reported
