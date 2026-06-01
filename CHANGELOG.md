@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+- **RouteScanner now recognizes `controller:`/`action:` and hash-rocket route forms** (#67) —
+  previously only `to: 'controller#action'` was parsed, so routes written as
+  `get '/x', controller: 'admin/widgets', action: 'show'`, `get :show, controller: :widgets`,
+  or `get '/x' => 'widgets#index'` (common in `draw`-ed split route files) were ignored and
+  their controllers/actions reported dead. All three forms now emit the action + controller
+  references.
+
 ### Changed
 - **Default output is now the classified, confidence/action-tiered view** (#62) — a no-flag
   run annotates each candidate with a suggested action (`safe_delete` / `delete_with_spec` /
