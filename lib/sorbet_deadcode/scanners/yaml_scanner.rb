@@ -37,6 +37,14 @@ module SorbetDeadcode
       # A bare Ruby method name.
       BARE = /\A(?<method>[a-z_]\w*[?!]?)\z/
 
+      # A bare, namespaced constant used as a YAML value or sequence item, e.g.
+      #   - My::Scenario
+      #   handler: My::Event::Handler
+      # Common in class-registry configs (demo scenarios, event consumers) that the
+      # framework loads via constantize. Requires a `::` so ordinary capitalized scalars
+      # (`state: California`) aren't mistaken for class references.
+      CONSTANT_VALUE = %r{^\s*(?:-\s*|[\w/.]+\s*:\s*)["']?(?<const>[A-Z]\w*(?:::[A-Z]\w*)+)["']?\s*(?:#.*)?$}
+
       def initialize(project_root, keys: DEFAULT_KEYS, bare_keys: DEFAULT_BARE_KEYS,
                      globs: DEFAULT_GLOBS, exclude_dirs: DEFAULT_EXCLUDE_DIRS)
         @project_root = File.expand_path(project_root)
@@ -52,8 +60,6 @@ module SorbetDeadcode
       # constant for qualified values, and name-only method references for bare keys.
       def references
         refs = []
-        return refs if @keys.empty? && @bare_keys.empty?
-
         yaml_files.each do |path|
           location = path
           text = safe_read(path)
@@ -62,6 +68,7 @@ module SorbetDeadcode
           text.each_line do |line|
             collect_qualified(line, location, refs)
             collect_bare(line, location, refs)
+            collect_constant(line, location, refs)
           end
         end
         refs
@@ -93,6 +100,16 @@ module SorbetDeadcode
         value = unquote(m[:value])
         b = BARE.match(value)
         refs << Reference.new(name: b[:method], location: location, kind: :method) if b
+      end
+
+      # A namespaced constant named as a YAML value/array item keeps that class/module alive.
+      def collect_constant(line, location, refs)
+        m = CONSTANT_VALUE.match(line)
+        return unless m
+
+        const = m[:const]
+        refs << Reference.new(name: const, location: location, kind: :constant)
+        refs << Reference.new(name: const.split("::").last, location: location, kind: :constant)
       end
 
       def unquote(value)
