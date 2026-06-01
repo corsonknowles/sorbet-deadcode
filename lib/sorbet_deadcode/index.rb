@@ -53,7 +53,7 @@ module SorbetDeadcode
     def filter_paths(paths)
       paths = Array(paths).map { |p| File.expand_path(p) }
       filtered = @dead_definitions.select do |d|
-        file = d.location.split(":").first
+        file = d.file
         abs = File.expand_path(file)
         paths.any? { |p| abs.start_with?(p) }
       end

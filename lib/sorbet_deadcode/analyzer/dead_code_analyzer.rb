@@ -135,7 +135,7 @@ module SorbetDeadcode
         @definitions.each do |d|
           next unless d.kind == :class || d.kind == :module
 
-          file = d.location.split(":").first
+          file = d.file
           file_counts[d.full_name] << file
         end
         Set.new(file_counts.select { |_, files| files.size > 1 }.keys)

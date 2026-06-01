@@ -49,7 +49,7 @@ module SorbetDeadcode
       def sdl_referenced?(defn, scoped)
         return false unless METHOD_KINDS.include?(defn.kind)
 
-        def_path = File.expand_path(defn.location.to_s.split(":").first.to_s)
+        def_path = File.expand_path(defn.file.to_s)
         scoped.any? { |dir, names| names.include?(defn.name) && within?(def_path, dir) }
       end
 

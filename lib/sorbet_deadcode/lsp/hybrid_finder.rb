@@ -96,22 +96,20 @@ module SorbetDeadcode
       end
 
       def send_reference_request(client, defn)
-        location = defn.location
-        file_path, line_str = location.split(":")
-        return nil unless file_path && line_str
+        file_path = defn.file
+        return nil unless file_path && defn.line
 
-        line = line_str.to_i - 1
+        line = defn.line - 1
         column = detect_column(file_path, line, defn)
 
         client.async_references(file_path, line, column)
       end
 
       def lsp_confirms_dead?(client, defn)
-        location = defn.location
-        file_path, line_str = location.split(":")
-        return true unless file_path && line_str
+        file_path = defn.file
+        return true unless file_path && defn.line
 
-        line = line_str.to_i - 1
+        line = defn.line - 1
         column = detect_column(file_path, line, defn)
 
         refs = client.references(file_path, line, column)
@@ -122,9 +120,8 @@ module SorbetDeadcode
       def filter_references(refs, defn)
         return [] unless refs.is_a?(Array)
 
-        location = defn.location
-        file_path, line_str = location.split(":")
-        def_line = line_str.to_i - 1
+        file_path = defn.file
+        def_line = defn.line - 1
         def_file_uri = "file://#{File.expand_path(file_path)}"
 
         refs.reject do |ref|

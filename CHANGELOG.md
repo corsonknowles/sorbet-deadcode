@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+- **`Definition` exposes `file` and `line` as fields** (#39) — the `"file:line"` location was
+  parsed via `location.split(":").first` in the analyzer, classifier, refiners, and LSP
+  finders, which is brittle on Windows drive-letter paths (`C:/x.rb:12`) and any path
+  containing a colon. The location is now split once in the constructor using `rpartition`
+  (last colon), and consumers read `definition.file` / `definition.line`. `location` is
+  retained as the display string.
+
 ### Added
 - **`--report-non-ruby` flag** (#61) — opt into reporting candidates that the route / YAML /
   ERB / RABL / GraphQL SDL refiners would otherwise hard-exclude. Instead of removing them,
