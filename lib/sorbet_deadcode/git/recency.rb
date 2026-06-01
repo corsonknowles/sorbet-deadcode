@@ -4,53 +4,46 @@ require "time"
 
 module SorbetDeadcode
   module Git
-    # Determines whether a definition was introduced recently, via git line history.
+    # Determines whether a definition was introduced recently.
     #
-    # Recently-added code is the riskiest to report dead: it may be in-flight work (behind
-    # a flag, a caller in an unmerged PR, scaffolding). The Classifier uses this to flag
-    # such candidates `:recently_added` and route them to review instead of safe_delete.
+    # Recently-added code is the riskiest to report dead: it may be in-flight work (behind a
+    # flag, a caller in an unmerged PR, scaffolding). The Classifier uses this to flag such
+    # candidates `:recently_added` and route them to review instead of safe_delete.
     #
-    # Line-level (`git log -L <line>,<line>:<file>`) is more accurate than file-level for
-    # large files. Degrades gracefully (returns false) outside a git checkout, for untracked
-    # files, or on any git error.
+    # The set of recently-added files is computed with a SINGLE batched git query up front
+    # (`git log --since --diff-filter=A --name-only`), so `recently_added?` is an O(1) lookup
+    # — per-candidate `git log -L` was prohibitively slow on deep-history monorepos. This is
+    # file-level (a method added to a much older file isn't flagged); a fast, conservative
+    # approximation that targets the common "new feature = new files" case. Degrades to "not
+    # recent" outside a git checkout or on any git error.
     class Recency
       def initialize(project_root, window_seconds)
         @project_root = File.expand_path(project_root)
-        @cutoff = Time.now - window_seconds
-        @cache = {}
+        @recent_files = recent_files(window_seconds)
       end
 
-      # True if the definition's line was introduced after the cutoff.
+      # definition.file is relative to the cwd (where analysis ran); git paths are relative
+      # to the repo root. Expanding both to absolute lets them match.
       def recently_added?(definition)
-        return false unless definition.file && definition.line
-
-        introduced = introduced_at(definition.file, definition.line)
-        introduced ? introduced > @cutoff : false
+        @recent_files.include?(File.expand_path(definition.file))
       end
 
       private
 
-      def introduced_at(file, line)
-        key = "#{file}:#{line}"
-        return @cache[key] if @cache.key?(key)
+      def recent_files(window_seconds)
+        out = git_added_since((Time.now - window_seconds).utc.iso8601)
+        return Set.new unless out
 
-        @cache[key] = compute_introduced_at(File.expand_path(file), line)
+        out.split("\n").reject(&:empty?)
+           .map { |rel| File.expand_path(rel, @project_root) }
+           .to_set
       end
 
-      def compute_introduced_at(abs_file, line)
-        out = git_line_log(abs_file, line)
-        return nil unless out
-
-        # `git log -L` lists commits newest-first; the oldest is when the line first appeared.
-        date = out.split("\n").reject(&:empty?).last
-        date && Time.parse(date)
-      end
-
-      # Raw `git log -L` output for a single line, or nil outside a checkout / on error /
-      # for untracked files.
-      def git_line_log(abs_file, line)
+      # Paths of files added in commits since `since` (ISO-8601), or nil on git failure.
+      def git_added_since(since)
         out = IO.popen(
-          ["git", "-C", @project_root, "log", "-L", "#{line},#{line}:#{abs_file}", "-s", "--format=%aI"],
+          ["git", "-C", @project_root, "log", "--since=#{since}",
+           "--diff-filter=A", "--name-only", "--pretty=format:"],
           err: File::NULL, &:read
         )
         $?.success? ? out : nil

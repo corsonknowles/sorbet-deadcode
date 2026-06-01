@@ -7,9 +7,10 @@
   introduced within a configurable git window (default **30 days**) are the riskiest to
   delete (possible in-flight work), so the Classifier now flags them `:recently_added`,
   downgrades them to low confidence, and routes them to `review` — keeping them out of the
-  `safe_delete` actionable list. Introduction date is determined per definition via git line
-  history (`git log -L`), degrading gracefully outside a checkout / for untracked files.
-  Configure with `--max-age` (`30d` / `2w` / `1m`); `--max-age 0` disables.
+  `safe_delete` actionable list. Recently-added files are found with a single batched
+  `git log --since --diff-filter=A` query up front (file-level; fast even on deep-history
+  monorepos), degrading gracefully outside a checkout. Configure with `--max-age`
+  (`30d` / `2w` / `1m`); `--max-age 0` disables.
 
 ### Fixed
 - **YAML class-registry configs are now recognized** (#76) — `YamlScanner` only matched
