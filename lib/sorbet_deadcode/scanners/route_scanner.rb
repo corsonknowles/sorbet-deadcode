@@ -159,7 +159,7 @@ module SorbetDeadcode
         class_name = controller_class_name(controller_name, namespace: ns)
 
         actions = singular ? CRUD_ACTIONS - ["index"] : CRUD_ACTIONS.dup
-        actions &= only_actions if only_actions
+        actions = actions & only_actions if only_actions
         actions -= except_actions if except_actions
 
         unless actions.empty?
@@ -173,7 +173,7 @@ module SorbetDeadcode
             name: action,
             location: location,
             kind: :method,
-            receiver_type: class_name
+            receiver_type: class_name,
           )
         end
       end
@@ -227,18 +227,18 @@ module SorbetDeadcode
           name: action,
           location: location,
           kind: :method,
-          receiver_type: class_name
+          receiver_type: class_name,
         )
         # Also emit the controller class as a constant reference so it's not reported dead.
         @references << Reference.new(
           name: class_name.split("::").last,
           location: location,
-          kind: :constant
+          kind: :constant,
         )
         @references << Reference.new(
           name: class_name,
           location: location,
-          kind: :constant
+          kind: :constant,
         )
       end
 

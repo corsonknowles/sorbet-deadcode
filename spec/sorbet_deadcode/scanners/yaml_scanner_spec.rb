@@ -20,16 +20,16 @@ module SorbetDeadcode
         path
       end
 
-      def refs(**)
-        YamlScanner.new(@dir, **).references
+      def refs(**opts)
+        YamlScanner.new(@dir, **opts).references
       end
 
-      def method_names(**)
-        refs(**).select { |r| r.kind == :method }.map(&:name)
+      def method_names(**opts)
+        refs(**opts).select { |r| r.kind == :method }.map(&:name)
       end
 
-      def constant_names(**)
-        refs(**).select { |r| r.kind == :constant }.map(&:name)
+      def constant_names(**opts)
+        refs(**opts).select { |r| r.kind == :constant }.map(&:name)
       end
 
       def test_extracts_qualified_method_reference

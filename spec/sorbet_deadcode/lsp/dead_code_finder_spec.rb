@@ -20,9 +20,9 @@ module SorbetDeadcode
         RUBY
 
         client = MockClient.new({
-                                  "alive_method" => [ref("#{dir}/other.rb", 10)],
-                                  "dead_method" => []
-                                })
+          "alive_method" => [ref("#{dir}/other.rb", 10)],
+          "dead_method" => [],
+        })
 
         results = run_finder(dir, client)
         dead_names = results.map(&:name)
@@ -134,7 +134,7 @@ module SorbetDeadcode
         file = write_file(dir, "app.rb", "  def my_method\n  end\n")
         defn = make_defn("my_method", :method, "#{file}:1")
         col = make_finder(dir).send(:detect_column, file, 0, defn)
-        assert_equal 6, col # position of 'm' in 'my_method'
+        assert_equal 6, col   # position of 'm' in 'my_method'
       ensure
         FileUtils.remove_entry(dir) if dir
       end
@@ -320,10 +320,10 @@ module SorbetDeadcode
         RUBY
 
         client = MockClient.new({
-                                  "dead_one" => [],
-                                  "dead_two" => [],
-                                  "alive_one" => [ref("#{dir}/caller.rb", 1)]
-                                })
+          "dead_one" => [],
+          "dead_two" => [],
+          "alive_one" => [ref("#{dir}/caller.rb", 1)],
+        })
 
         results = run_finder(dir, client, parallel: 3)
         dead_names = results.map(&:name)
@@ -378,7 +378,7 @@ module SorbetDeadcode
       def ref(path, line)
         {
           "uri" => "file://#{File.expand_path(path)}",
-          "range" => { "start" => { "line" => line, "character" => 0 }, "end" => { "line" => line, "character" => 5 } }
+          "range" => { "start" => { "line" => line, "character" => 0 }, "end" => { "line" => line, "character" => 5 } },
         }
       end
 
@@ -401,7 +401,7 @@ module SorbetDeadcode
           project_root: dir,
           paths: [dir],
           exclude_paths: exclude_paths,
-          parallel: parallel
+          parallel: parallel,
         )
         capture_stderr do
           Client.stub(:new, client) { finder.run }

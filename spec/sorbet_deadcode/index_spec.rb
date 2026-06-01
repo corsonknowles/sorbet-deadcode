@@ -37,7 +37,7 @@ module SorbetDeadcode
     def test_filter_paths_keeps_matching
       defs = [
         make_def("in_lib", location: "/project/lib/foo.rb:1"),
-        make_def("in_spec", location: "/project/spec/foo_spec.rb:1")
+        make_def("in_spec", location: "/project/spec/foo_spec.rb:1"),
       ]
       index = Index.new(dead_definitions: defs, paths: ["/project"])
       filtered = index.filter_paths(["/project/lib"])

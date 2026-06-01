@@ -74,7 +74,7 @@ module SorbetDeadcode
 
       def test_truly_dead_methods_survive_verification
         candidates = SorbetDeadcode.analyze(
-          File.join(FIXTURES_PATH, "app")
+          File.join(FIXTURES_PATH, "app"),
         )
 
         verified = @verifier.verify(candidates)
@@ -88,7 +88,7 @@ module SorbetDeadcode
 
       def test_methods_with_references_elsewhere_are_filtered_out
         candidates = SorbetDeadcode.analyze(
-          File.join(FIXTURES_PATH, "app")
+          File.join(FIXTURES_PATH, "app"),
         )
 
         verified = @verifier.verify(candidates)
@@ -102,11 +102,11 @@ module SorbetDeadcode
       def test_exclude_paths_limits_ripgrep_search
         verifier = RipgrepVerifier.new(
           project_root: @project_root,
-          exclude_paths: ["spec/"]
+          exclude_paths: ["spec/"],
         )
 
         candidates = SorbetDeadcode.analyze(
-          File.join(FIXTURES_PATH, "app")
+          File.join(FIXTURES_PATH, "app"),
         )
 
         verified = verifier.verify(candidates)
@@ -120,7 +120,7 @@ module SorbetDeadcode
       def test_analyze_and_verify_integration
         verified = SorbetDeadcode.analyze_and_verify(
           paths: [File.join(FIXTURES_PATH, "app")],
-          project_root: FIXTURES_PATH
+          project_root: FIXTURES_PATH,
         )
 
         verified_names = verified.map(&:full_name)

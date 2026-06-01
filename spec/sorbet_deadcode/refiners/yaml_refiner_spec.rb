@@ -20,17 +20,17 @@ module SorbetDeadcode
       end
 
       SANITIZER_CLASS = "Sanitizers::Helpers::WidgetSanitizer"
-      SANITIZER = "method: #{SANITIZER_CLASS}.sanitize_widget\n".freeze
+      SANITIZER = "method: #{SANITIZER_CLASS}.sanitize_widget\n"
 
       def make_def(name, kind: :method, owner: SANITIZER_CLASS)
         Definition.new(
           name: name, full_name: "#{owner}##{name}", kind: kind,
-          location: "app/models/widget_sanitizer.rb:1", owner_name: owner
+          location: "app/models/widget_sanitizer.rb:1", owner_name: owner,
         )
       end
 
-      def refiner(**)
-        YamlRefiner.new(@dir, **)
+      def refiner(**opts)
+        YamlRefiner.new(@dir, **opts)
       end
 
       def test_removes_method_referenced_in_yaml
@@ -70,7 +70,7 @@ module SorbetDeadcode
         klass = Definition.new(
           name: "WidgetSanitizer",
           full_name: SANITIZER_CLASS,
-          kind: :class, location: "f:1"
+          kind: :class, location: "f:1",
         )
         assert_empty refiner.refine([klass])
       end
@@ -126,7 +126,7 @@ module SorbetDeadcode
 
         results = SorbetDeadcode.analyze_and_refine(
           paths: [File.join(@dir, "app")],
-          refiners: [YamlRefiner.new(@dir)]
+          refiners: [YamlRefiner.new(@dir)],
         )
         names = results.map(&:name)
 

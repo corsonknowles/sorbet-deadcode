@@ -24,7 +24,7 @@ module SorbetDeadcode
         @method_signatures[owner] ||= {}
         @method_signatures[owner][method_name] = {
           params: param_types,
-          returns: return_type
+          returns: return_type,
         }
       end
 
@@ -46,8 +46,8 @@ module SorbetDeadcode
 
       # Check if we have type info for a given owner and method
       def typed?(owner, method_name)
-        !@method_signatures.dig(owner, method_name).nil? ||
-          !@attr_types.dig(owner, method_name).nil?
+        @method_signatures.dig(owner, method_name) != nil ||
+          @attr_types.dig(owner, method_name) != nil
       end
     end
   end

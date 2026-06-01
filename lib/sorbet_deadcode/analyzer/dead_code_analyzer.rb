@@ -6,13 +6,13 @@ module SorbetDeadcode
       # Methods that are called by frameworks/Ruby internals and never appear as
       # explicit call sites in user code. Reporting them dead is always wrong.
       ALWAYS_ALIVE_METHODS = Set.new(%w[
-                                       initialize
-                                       respond_to_missing?
-                                       method_missing
-                                       use_relative_model_naming?
-                                       to_s
-                                       inspect
-                                     ]).freeze
+        initialize
+        respond_to_missing?
+        method_missing
+        use_relative_model_naming?
+        to_s
+        inspect
+      ]).freeze
 
       attr_reader :definitions, :references, :type_resolver
 
@@ -63,15 +63,15 @@ module SorbetDeadcode
       private
 
       def collect_files
-        @paths.flat_map do |path|
+        @paths.flat_map { |path|
           if File.file?(path)
             [path]
           else
             Dir.glob(File.join(path, "**", "*.rb"))
           end
-        end.reject do |f|
+        }.reject { |f|
           @exclude_paths.any? { |ep| f.include?(ep) }
-        end.sort
+        }.sort
       end
 
       # Files in @reference_paths that aren't already in the definition set.
@@ -80,15 +80,15 @@ module SorbetDeadcode
       # excluded from definition scanning. We only skip files already analysed above.
       def collect_reference_only_files(def_files)
         def_set = Set.new(def_files.map { |f| File.expand_path(f) })
-        @reference_paths.flat_map do |path|
+        @reference_paths.flat_map { |path|
           if File.file?(path)
             [path]
           else
             Dir.glob(File.join(path, "**", "*.rb"))
           end
-        end.reject do |f|
+        }.reject { |f|
           def_set.include?(File.expand_path(f))
-        end.sort
+        }.sort
       end
 
       def index_file_references_only(file)
@@ -133,7 +133,7 @@ module SorbetDeadcode
         # Count how many distinct source files each class/module full_name appears in.
         file_counts = Hash.new { |h, k| h[k] = Set.new }
         @definitions.each do |d|
-          next unless %i[class module].include?(d.kind)
+          next unless d.kind == :class || d.kind == :module
 
           file = d.location.split(":").first
           file_counts[d.full_name] << file
@@ -261,7 +261,7 @@ module SorbetDeadcode
           typed_by_name: typed_by_name,
           method_prefixes: method_prefixes,
           method_suffixes: method_suffixes,
-          dynamic_namespaces: dynamic_namespaces
+          dynamic_namespaces: dynamic_namespaces,
         }
       end
     end
@@ -289,7 +289,9 @@ module SorbetDeadcode
       end
 
       def visit_call_node(node)
-        @pending_sig = extract_sig_info(node) if node.receiver.nil? && node.name.to_s == "sig"
+        if node.receiver.nil? && node.name.to_s == "sig"
+          @pending_sig = extract_sig_info(node)
+        end
         super
       end
 
@@ -299,7 +301,7 @@ module SorbetDeadcode
             owner: current_namespace,
             method_name: node.name.to_s,
             return_type: @pending_sig[:returns],
-            param_types: @pending_sig[:params]
+            param_types: @pending_sig[:params],
           )
         end
         @pending_sig = nil

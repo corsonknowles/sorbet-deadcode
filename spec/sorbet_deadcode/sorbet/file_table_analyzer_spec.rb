@@ -6,6 +6,12 @@ require "open3"
 module SorbetDeadcode
   module Sorbet
     class FileTableAnalyzerSpec < Minitest::Test
+      FakeStatus = Struct.new(:ok) do
+        def success?
+          ok
+        end
+      end
+
       SAMPLE_SYMBOL_TABLE = {
         "id" => 1,
         "name" => { "kind" => "CONSTANT", "name" => "<root>" },
@@ -20,21 +26,21 @@ module SorbetDeadcode
                 "id" => 101,
                 "name" => { "kind" => "UTF8", "name" => "perform" },
                 "kind" => "METHOD",
-                "arguments" => []
+                "arguments" => [],
               },
               {
                 "id" => 102,
                 "name" => { "kind" => "UTF8", "name" => "unused_helper" },
                 "kind" => "METHOD",
-                "arguments" => []
+                "arguments" => [],
               },
               {
                 "id" => 103,
                 "name" => { "kind" => "UTF8", "name" => "<static-init>" },
                 "kind" => "METHOD",
-                "arguments" => []
-              }
-            ]
+                "arguments" => [],
+              },
+            ],
           },
           {
             "id" => 200,
@@ -45,24 +51,24 @@ module SorbetDeadcode
                 "id" => 201,
                 "name" => { "kind" => "UTF8", "name" => "do_nothing" },
                 "kind" => "METHOD",
-                "arguments" => []
-              }
-            ]
+                "arguments" => [],
+              },
+            ],
           },
           {
             "id" => 300,
             "name" => { "kind" => "CONSTANT", "name" => "UsedClass" },
             "kind" => "CLASS_OR_MODULE",
-            "children" => []
-          }
-        ]
+            "children" => [],
+          },
+        ],
       }.freeze
 
       def test_extracts_definitions_from_symbol_table
         analyzer = FileTableAnalyzer.new(
           project_root: "/tmp",
           paths: ["/tmp"],
-          exclude_paths: []
+          exclude_paths: [],
         )
 
         defs = analyzer.send(:extract_definitions, SAMPLE_SYMBOL_TABLE)
@@ -83,7 +89,7 @@ module SorbetDeadcode
         analyzer = FileTableAnalyzer.new(
           project_root: "/tmp",
           paths: ["/tmp"],
-          exclude_paths: []
+          exclude_paths: [],
         )
 
         synthetic_table = {
@@ -95,15 +101,15 @@ module SorbetDeadcode
               "id" => 50,
               "name" => { "kind" => "CONSTANT", "name" => "<describe 'something'>" },
               "kind" => "CLASS_OR_MODULE",
-              "children" => []
+              "children" => [],
             },
             {
               "id" => 51,
               "name" => { "kind" => "UTF8", "name" => "initialize" },
               "kind" => "METHOD",
-              "arguments" => []
-            }
-          ]
+              "arguments" => [],
+            },
+          ],
         }
 
         defs = analyzer.send(:extract_definitions, synthetic_table)
@@ -114,7 +120,7 @@ module SorbetDeadcode
         analyzer = FileTableAnalyzer.new(
           project_root: "/tmp",
           paths: ["/tmp"],
-          exclude_paths: []
+          exclude_paths: [],
         )
 
         defs = analyzer.send(:extract_definitions, SAMPLE_SYMBOL_TABLE)
@@ -130,14 +136,14 @@ module SorbetDeadcode
         analyzer = FileTableAnalyzer.new(
           project_root: "/tmp",
           paths: ["/tmp"],
-          exclude_paths: []
+          exclude_paths: [],
         )
 
         definitions = [
           Definition.new(name: "alive_method", full_name: "Foo#alive_method", kind: :method, location: "test:1"),
           Definition.new(name: "dead_method", full_name: "Foo#dead_method", kind: :method, location: "test:2"),
           Definition.new(name: "UsedClass", full_name: "UsedClass", kind: :class, location: "test:3"),
-          Definition.new(name: "DeadClass", full_name: "DeadClass", kind: :class, location: "test:4")
+          Definition.new(name: "DeadClass", full_name: "DeadClass", kind: :class, location: "test:4"),
         ]
 
         ref_alive = Reference.new(name: "alive_method", kind: :method, location: "caller:10")
@@ -158,7 +164,7 @@ module SorbetDeadcode
         # A constant definition falls through to the `else => true` branch and is
         # always retained (this analyzer only reasons about classes/methods).
         definitions = [
-          Definition.new(name: "SOME_CONST", full_name: "Foo::SOME_CONST", kind: :constant, location: "t:1")
+          Definition.new(name: "SOME_CONST", full_name: "Foo::SOME_CONST", kind: :constant, location: "t:1"),
         ]
         dead = analyzer.send(:find_dead, definitions, [])
         assert_equal ["SOME_CONST"], dead.map(&:name)
@@ -226,7 +232,7 @@ module SorbetDeadcode
         node = {
           "name" => { "kind" => "UTF8", "name" => "something" },
           "kind" => "CLASS_OR_MODULE",
-          "children" => []
+          "children" => [],
         }
         # UTF8 kind on a CLASS_OR_MODULE is not extracted (we only want CONSTANT).
         assert_equal [], analyzer.send(:extract_definitions, node)
@@ -237,7 +243,7 @@ module SorbetDeadcode
         node = {
           "name" => { "kind" => "CONSTANT", "name" => "MyConst" },
           "kind" => "METHOD",
-          "children" => []
+          "children" => [],
         }
         # CONSTANT kind on a METHOD is not extracted.
         assert_equal [], analyzer.send(:extract_definitions, node)
@@ -248,7 +254,7 @@ module SorbetDeadcode
         node = {
           "name" => { "kind" => "UTF8", "name" => "field_name" },
           "kind" => "FIELD",
-          "children" => []
+          "children" => [],
         }
         assert_equal [], analyzer.send(:extract_definitions, node)
       end
@@ -258,7 +264,7 @@ module SorbetDeadcode
         # A node with no "children" key is handled cleanly (not an Array).
         node = {
           "name" => { "kind" => "CONSTANT", "name" => "Leaf" },
-          "kind" => "CLASS_OR_MODULE"
+          "kind" => "CLASS_OR_MODULE",
         }
         defs = analyzer.send(:extract_definitions, node)
         assert_equal ["Leaf"], defs.map(&:name)
@@ -296,7 +302,7 @@ module SorbetDeadcode
         analyzer = build_analyzer
         node = {
           "name" => { "kind" => "UTF8", "name" => "top_level_method" },
-          "kind" => "METHOD"
+          "kind" => "METHOD",
         }
         defs = analyzer.send(:extract_definitions, node)
         assert_equal 1, defs.size
@@ -332,9 +338,9 @@ module SorbetDeadcode
             {
               "name" => { "kind" => "CONSTANT", "name" => "Real" },
               "kind" => "CLASS_OR_MODULE",
-              "children" => []
-            }
-          ]
+              "children" => [],
+            },
+          ],
         }
         defs = analyzer.send(:extract_definitions, node)
         # Parent is synthetic → skipped; child is real but namespace stays []
@@ -358,7 +364,7 @@ module SorbetDeadcode
         analyzer = FileTableAnalyzer.new(
           project_root: dir,
           paths: [dir],
-          exclude_paths: []
+          exclude_paths: [],
         )
 
         symbol_table = {
@@ -375,17 +381,17 @@ module SorbetDeadcode
                   "id" => 11,
                   "name" => { "kind" => "UTF8", "name" => "used_method" },
                   "kind" => "METHOD",
-                  "arguments" => []
+                  "arguments" => [],
                 },
                 {
                   "id" => 12,
                   "name" => { "kind" => "UTF8", "name" => "dead_method" },
                   "kind" => "METHOD",
-                  "arguments" => []
-                }
-              ]
-            }
-          ]
+                  "arguments" => [],
+                },
+              ],
+            },
+          ],
         }
 
         analyzer.define_singleton_method(:load_symbol_table) { symbol_table }
@@ -411,7 +417,7 @@ module SorbetDeadcode
         analyzer = FileTableAnalyzer.new(
           project_root: dir,
           paths: [dir],
-          exclude_paths: []
+          exclude_paths: [],
         )
 
         analyzer.define_singleton_method(:load_symbol_table) { nil }
@@ -421,12 +427,6 @@ module SorbetDeadcode
         assert(results.any? { |d| d.name == "orphan_method" })
       ensure
         FileUtils.remove_entry(dir) if dir
-      end
-
-      FakeStatus = Struct.new(:ok) do
-        def success?
-          ok
-        end
       end
 
       private

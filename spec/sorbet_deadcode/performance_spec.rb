@@ -42,8 +42,8 @@ class PerformanceSpec < Minitest::Test
     end
 
     assert elapsed < 5.0,
-           "Liveness analysis took #{elapsed.round(2)}s on 1000 definitions — " \
-           "expected < 5s. Possible O(N²) regression."
+      "Liveness analysis took #{elapsed.round(2)}s on 1000 definitions — " \
+      "expected < 5s. Possible O(N²) regression."
   ensure
     FileUtils.remove_entry(dir) if dir
   end

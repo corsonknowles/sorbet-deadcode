@@ -169,11 +169,7 @@ module SorbetDeadcode
         # Some systems (e.g. running as root) can't restrict read access — skip.
         skip "Cannot restrict file permissions on this system"
       ensure
-        begin
-          File.chmod(0o644, File.join(@dir, "config", "routes.rb"))
-        rescue StandardError
-          nil
-        end
+        File.chmod(0o644, File.join(@dir, "config", "routes.rb")) rescue nil
       end
 
       def test_returns_empty_when_no_routes_file
@@ -187,7 +183,7 @@ module SorbetDeadcode
         FileUtils.mkdir_p(File.join(@dir, "config", "routes"))
         File.write(File.join(@dir, "config", "routes.rb"), "")
         File.write(File.join(@dir, "config", "routes", "admin.rb"),
-                   "get '/admin', to: 'admin/dashboard#index'")
+          "get '/admin', to: 'admin/dashboard#index'")
 
         refs = RouteScanner.new(@dir).references
         assert(refs.any? { |r| r.name == "index" && r.receiver_type == "Admin::DashboardController" })
@@ -282,7 +278,7 @@ module SorbetDeadcode
       def test_camelize_handles_single_word
         collector = RouteReferenceCollector.new("test.rb")
         assert_equal "Admin::WidgetsController",
-                     collector.send(:controller_class_name, "admin/widgets", namespace: [])
+          collector.send(:controller_class_name, "admin/widgets", namespace: [])
       end
 
       def test_controller_block_without_arg_does_not_crash
@@ -325,6 +321,7 @@ module SorbetDeadcode
         int_node = Prism.parse("42").value.statements.body.first
         assert_nil collector.send(:symbol_or_string, int_node)
       end
+
     end
   end
 end

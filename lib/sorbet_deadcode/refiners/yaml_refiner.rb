@@ -33,7 +33,9 @@ module SorbetDeadcode
         return dead_candidates if dead_candidates.empty?
 
         referenced = build_referenced_set
-        return dead_candidates if referenced[:typed_methods].empty? && referenced[:bare_methods].empty? && referenced[:classes].empty?
+        if referenced[:typed_methods].empty? && referenced[:bare_methods].empty? && referenced[:classes].empty?
+          return dead_candidates
+        end
 
         dead_candidates.reject { |d| yaml_referenced?(d, referenced) }
       end
@@ -60,7 +62,7 @@ module SorbetDeadcode
       def yaml_referenced?(defn, referenced)
         if METHOD_KINDS.include?(defn.kind)
           return referenced[:typed_methods].include?([defn.owner_name, defn.name]) ||
-                 referenced[:bare_methods].include?(defn.name)
+              referenced[:bare_methods].include?(defn.name)
         end
 
         referenced[:classes].include?(defn.name) ||

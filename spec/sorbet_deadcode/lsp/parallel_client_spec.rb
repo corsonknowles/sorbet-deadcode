@@ -12,8 +12,8 @@ module SorbetDeadcode
 
         suppress_stderr do
           client = build_async_mock_client(dir, responses: {
-                                             2 => [{ "uri" => "file://#{test_file}", "range" => { "start" => { "line" => 5, "character" => 0 } } }] # rubocop:disable Layout/LineLength
-                                           })
+            2 => [{ "uri" => "file://#{test_file}", "range" => { "start" => { "line" => 5, "character" => 0 } } }],
+          })
           id = client.async_references(test_file, 0, 6)
           assert_kind_of Integer, id
         end
@@ -28,11 +28,11 @@ module SorbetDeadcode
 
         suppress_stderr do
           expected_refs = [
-            { "uri" => "file://#{test_file}", "range" => { "start" => { "line" => 5, "character" => 0 } } }
+            { "uri" => "file://#{test_file}", "range" => { "start" => { "line" => 5, "character" => 0 } } },
           ]
           client = build_async_mock_client(dir, responses: {
-                                             2 => expected_refs
-                                           })
+            2 => expected_refs,
+          })
           id = client.async_references(test_file, 0, 6)
           result = client.collect_response(id)
           assert_equal expected_refs, result
@@ -53,9 +53,9 @@ module SorbetDeadcode
           refs_b = [{ "uri" => "file://#{file_b}", "range" => { "start" => { "line" => 2, "character" => 0 } } }]
 
           client = build_async_mock_client(dir, responses: {
-                                             2 => refs_a,
-                                             3 => refs_b
-                                           })
+            2 => refs_a,
+            3 => refs_b,
+          })
 
           id_a = client.async_references(file_a, 0, 6)
           id_b = client.async_references(file_b, 0, 6)
@@ -85,9 +85,9 @@ module SorbetDeadcode
 
           # Responses arrive in reverse order (id=3 before id=2)
           client = build_async_mock_client(dir, responses: :reverse, reverse_responses: {
-                                             2 => refs_a,
-                                             3 => refs_b
-                                           })
+            2 => refs_a,
+            3 => refs_b,
+          })
 
           id_a = client.async_references(file_a, 0, 6)
           id_b = client.async_references(file_b, 0, 6)
@@ -146,11 +146,7 @@ module SorbetDeadcode
         client.send(:send_initialize)
         client.send(:send_initialized)
 
-        Thread.new do
-          stdin_read.read
-        rescue StandardError
-          nil
-        end
+        Thread.new { stdin_read.read rescue nil }
 
         client
       end

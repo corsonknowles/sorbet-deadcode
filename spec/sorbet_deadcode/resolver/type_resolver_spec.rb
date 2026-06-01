@@ -13,7 +13,7 @@ module SorbetDeadcode
         @resolver.register_method(
           owner: "User",
           method_name: "company",
-          return_type: "Company"
+          return_type: "Company",
         )
 
         assert_equal "Company", @resolver.return_type_of("User", "company")
@@ -39,7 +39,7 @@ module SorbetDeadcode
         @resolver.register_method(
           owner: "User",
           method_name: "company",
-          return_type: "Company"
+          return_type: "Company",
         )
 
         assert @resolver.typed?("User", "company")
@@ -50,7 +50,7 @@ module SorbetDeadcode
         @resolver.register_method(
           owner: "User",
           method_name: "name",
-          return_type: "Symbol"
+          return_type: "Symbol",
         )
 
         assert_equal "Symbol", @resolver.return_type_of("User", "name")
@@ -61,7 +61,7 @@ module SorbetDeadcode
           owner: "Service",
           method_name: "call",
           return_type: "String",
-          param_types: { "input" => "Integer" }
+          param_types: { "input" => "Integer" },
         )
 
         sig = @resolver.method_signatures.dig("Service", "call")

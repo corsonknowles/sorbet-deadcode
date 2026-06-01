@@ -19,7 +19,7 @@ module SorbetDeadcode
       :external_reference_count, # occurrences outside the definition file
       :flags,                 # Array<Symbol> risk markers
       :suggested_action,      # :safe_delete / :delete_with_spec / :review / :keep
-      keyword_init: true
+      keyword_init: true,
     )
 
     # Matches files under spec/ or test/ directories, or *_spec.rb / *_test.rb.
@@ -36,8 +36,8 @@ module SorbetDeadcode
       return [] if candidates.empty?
 
       unless Ripgrep.available?
-        warn "[sorbet-deadcode] ripgrep (rg) not found — classifying without reference " \
-             "data. Install ripgrep for accurate flags/actions."
+        $stderr.puts "[sorbet-deadcode] ripgrep (rg) not found — classifying without reference " \
+                     "data. Install ripgrep for accurate flags/actions."
         return candidates.map { |defn| unverified_result(defn) }
       end
 
@@ -56,7 +56,7 @@ module SorbetDeadcode
         reference_count: nil,
         external_reference_count: nil,
         flags: [:ripgrep_unavailable],
-        suggested_action: :review
+        suggested_action: :review,
       )
     end
 
@@ -68,7 +68,7 @@ module SorbetDeadcode
       external_count = external.values.sum
 
       production_ruby = external.keys.select { |f| f.end_with?(".rb") && !f.match?(SPEC_PATH) }
-      spec_refs = external.keys.grep(SPEC_PATH)
+      spec_refs = external.keys.select { |f| f.match?(SPEC_PATH) }
       non_ruby = external.keys.reject { |f| f.end_with?(".rb") }
 
       flags = build_flags(definition, spec_refs, non_ruby, production_ruby)
@@ -81,7 +81,7 @@ module SorbetDeadcode
         reference_count: total,
         external_reference_count: external_count,
         flags: flags,
-        suggested_action: action
+        suggested_action: action,
       )
     end
 
@@ -110,7 +110,6 @@ module SorbetDeadcode
       return :delete_with_spec if spec_refs.any?
       # Inline constant side-effect (PARENT = [CHILD = ...]) → review removal carefully.
       return :review if flags.include?(:inline_constant)
-
       # No references anywhere outside the definition.
       external_count.zero? ? :safe_delete : :review
     end
@@ -158,7 +157,7 @@ module SorbetDeadcode
 
     def write_pattern_file(names)
       file = Tempfile.new(["sorbet_deadcode_classify", ".txt"])
-      file.write("#{names.join("\n")}\n")
+      file.write(names.join("\n") + "\n")
       file.close
       file.path
     end

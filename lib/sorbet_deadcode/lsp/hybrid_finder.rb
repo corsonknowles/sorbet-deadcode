@@ -16,11 +16,11 @@ module SorbetDeadcode
       def run
         candidates = prism_pass
         if candidates.empty?
-          warn "Prism pass found no dead code candidates."
+          $stderr.puts "Prism pass found no dead code candidates."
           return []
         end
 
-        warn "Prism pass found #{candidates.size} candidates. Validating with LSP..."
+        $stderr.puts "Prism pass found #{candidates.size} candidates. Validating with LSP..."
 
         client = Client.new(@project_root)
         begin
@@ -37,19 +37,20 @@ module SorbetDeadcode
       def prism_pass
         analyzer = Analyzer::DeadCodeAnalyzer.new(
           paths: @paths,
-          exclude_paths: @exclude_paths
+          exclude_paths: @exclude_paths,
         )
         analyzer.run
       end
 
       def lsp_validate(client, candidates)
+        confirmed_dead = []
         total = candidates.size
 
-        confirmed_dead = if @parallel > 1
-                           lsp_validate_parallel(client, candidates, total)
-                         else
-                           lsp_validate_sequential(client, candidates, total)
-                         end
+        if @parallel > 1
+          confirmed_dead = lsp_validate_parallel(client, candidates, total)
+        else
+          confirmed_dead = lsp_validate_sequential(client, candidates, total)
+        end
 
         $stderr.puts
         confirmed_dead
@@ -61,7 +62,9 @@ module SorbetDeadcode
         candidates.each_with_index do |defn, index|
           $stderr.print "\rValidating candidates: #{index + 1}/#{total}"
 
-          confirmed_dead << defn if lsp_confirms_dead?(client, defn)
+          if lsp_confirms_dead?(client, defn)
+            confirmed_dead << defn
+          end
         end
 
         confirmed_dead

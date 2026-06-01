@@ -85,7 +85,7 @@ module SorbetDeadcode
         resolver.register_method(
           owner: "User",
           method_name: "company",
-          return_type: "Company"
+          return_type: "Company",
         )
 
         refs = collect(<<~RUBY, type_resolver: resolver)
@@ -258,12 +258,12 @@ module SorbetDeadcode
         RUBY
 
         names = refs.select { |r| r.kind == :method }.map(&:name)
-        assert_includes names, "resolver_m" # method: still resolved
+        assert_includes names, "resolver_m"           # method: still resolved
         refute(names.any? { |n| n.start_with?("load_") }) # no loader without a symbol name
       end
 
       def test_graphql_string_option_key_is_skipped
-        refs = collect(<<~RUBY)
+        refs = collect(<<~'RUBY')
           class T < BaseMutation
             argument :x, ID, "method" => :should_be_ignored
           end
@@ -885,7 +885,7 @@ module SorbetDeadcode
           send(method_name)
         RUBY
 
-        refute(refs.any? { |r| %i[method_prefix dynamic_namespace].include?(r.kind) })
+        refute(refs.any? { |r| r.kind == :method_prefix || r.kind == :dynamic_namespace })
       end
 
       def test_interpolation_leading_with_expression_emits_suffix_not_namespace
@@ -1006,7 +1006,7 @@ module SorbetDeadcode
           owner: "Service",
           method_name: "call",
           return_type: "String",
-          param_types: { "user" => "User" }
+          param_types: { "user" => "User" },
         )
         resolver.register_method(owner: "User", method_name: "name", return_type: "String")
 

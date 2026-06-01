@@ -36,11 +36,7 @@ module SorbetDeadcode
         rescue IOError, Errno::EPIPE
           nil
         end
-        drainer = Thread.new do
-          stdin_read.read
-        rescue StandardError
-          nil
-        end
+        drainer = Thread.new { stdin_read.read rescue nil }
 
         client = nil
         Open3.stub(:popen3, [stdin_write, stdout_read, nil, FakeWaitThread.new(alive: false)]) do
@@ -129,10 +125,10 @@ module SorbetDeadcode
           # The mock sends: initialize(id=1), then refs(id=3) before refs(id=2).
           # We request id=2 first; the loop should buffer id=3, then see id=2.
           client = build_mock_client(dir, cache_exists: false,
-                                          extra_responses: [
-                                            { "jsonrpc" => "2.0", "id" => 3, "result" => ["extra"] },
-                                            { "jsonrpc" => "2.0", "id" => 2, "result" => [] }
-                                          ])
+            extra_responses: [
+              { "jsonrpc" => "2.0", "id" => 3, "result" => ["extra"] },
+              { "jsonrpc" => "2.0", "id" => 2, "result" => [] },
+            ])
           refs = client.references(test_file, 0, 6)
           assert_equal [], refs
           # id=3 is now buffered
@@ -156,48 +152,24 @@ module SorbetDeadcode
         result = client.send(:read_response, 42)
         assert_nil result
       ensure
-        begin
-          stdin_read.close
-        rescue StandardError
-          nil
-        end
-        begin
-          stdin_write.close
-        rescue StandardError
-          nil
-        end
-        begin
-          stdout_read.close
-        rescue StandardError
-          nil
-        end
+        stdin_read.close rescue nil
+        stdin_write.close rescue nil
+        stdout_read.close rescue nil
       end
 
       def test_read_message_returns_nil_when_stdout_closed
         stdin_read, stdin_write = IO.pipe
         stdout_read, stdout_write = IO.pipe
-        stdout_write.close # nothing to read
+        stdout_write.close   # nothing to read
 
         client = Client.allocate
         client.instance_variable_set(:@stdout, stdout_read)
         result = client.send(:read_message)
         assert_nil result
       ensure
-        begin
-          stdin_read.close
-        rescue StandardError
-          nil
-        end
-        begin
-          stdin_write.close
-        rescue StandardError
-          nil
-        end
-        begin
-          stdout_read.close
-        rescue StandardError
-          nil
-        end
+        stdin_read.close rescue nil
+        stdin_write.close rescue nil
+        stdout_read.close rescue nil
       end
 
       def test_read_message_returns_nil_with_no_content_length_header
@@ -217,21 +189,9 @@ module SorbetDeadcode
         result = client.send(:read_message)
         assert_nil result
       ensure
-        begin
-          stdin_read.close
-        rescue StandardError
-          nil
-        end
-        begin
-          stdin_write.close
-        rescue StandardError
-          nil
-        end
-        begin
-          stdout_read.close
-        rescue StandardError
-          nil
-        end
+        stdin_read.close rescue nil
+        stdin_write.close rescue nil
+        stdout_read.close rescue nil
       end
 
       def test_read_message_returns_nil_on_empty_body
@@ -250,21 +210,9 @@ module SorbetDeadcode
         result = client.send(:read_message)
         assert_nil result
       ensure
-        begin
-          stdin_read.close
-        rescue StandardError
-          nil
-        end
-        begin
-          stdin_write.close
-        rescue StandardError
-          nil
-        end
-        begin
-          stdout_read.close
-        rescue StandardError
-          nil
-        end
+        stdin_read.close rescue nil
+        stdin_write.close rescue nil
+        stdout_read.close rescue nil
       end
 
       def test_notification_from_server_is_buffered_and_skipped
@@ -275,10 +223,10 @@ module SorbetDeadcode
         # Insert a server-push notification (no "id") before the actual response.
         suppress_stderr do
           client = build_mock_client(dir, cache_exists: false,
-                                          extra_responses: [
-                                            { "jsonrpc" => "2.0", "method" => "window/showMessage", "params" => {} },
-                                            { "jsonrpc" => "2.0", "id" => 2, "result" => [] }
-                                          ])
+            extra_responses: [
+              { "jsonrpc" => "2.0", "method" => "window/showMessage", "params" => {} },
+              { "jsonrpc" => "2.0", "id" => 2, "result" => [] },
+            ])
           refs = client.references(test_file, 0, 6)
           assert_equal [], refs
         end
@@ -313,7 +261,6 @@ module SorbetDeadcode
       ensure
         FileUtils.remove_entry(dir) if dir
       end
-
       def test_warns_when_sorbet_cache_missing
         dir = Dir.mktmpdir
 
@@ -322,7 +269,7 @@ module SorbetDeadcode
         end
 
         assert_match(/Sorbet cache not found/, warning)
-        assert_match(%r{tmp/cache/sorbet}, warning)
+        assert_match(/tmp\/cache\/sorbet/, warning)
       end
 
       def test_no_warning_when_sorbet_cache_exists
@@ -346,8 +293,8 @@ module SorbetDeadcode
         refs = nil
         suppress_stderr do
           client = build_mock_client(dir, cache_exists: false, references_result: [
-                                       { "uri" => "file://#{test_file}", "range" => { "start" => { "line" => 5, "character" => 0 } } }
-                                     ])
+            { "uri" => "file://#{test_file}", "range" => { "start" => { "line" => 5, "character" => 0 } } },
+          ])
           refs = client.references(test_file, 0, 6)
         end
 
@@ -381,8 +328,7 @@ module SorbetDeadcode
       private
 
       # Builds a Client with mocked I/O so we never start a real Sorbet process
-      def build_mock_client(project_root, cache_exists: false, references_result: [], error_response: nil, leading_blank: false,
-                            extra_responses: nil)
+      def build_mock_client(project_root, cache_exists: false, references_result: [], error_response: nil, leading_blank: false, extra_responses: nil)
         client = Client.allocate
         client.instance_variable_set(:@project_root, File.expand_path(project_root))
         client.instance_variable_set(:@request_id, 0)
@@ -434,11 +380,7 @@ module SorbetDeadcode
         client.send(:send_initialized)
 
         # Drain stdin so the pipe doesn't block
-        Thread.new do
-          stdin_read.read
-        rescue StandardError
-          nil
-        end
+        Thread.new { stdin_read.read rescue nil }
 
         client
       end
@@ -465,11 +407,7 @@ module SorbetDeadcode
         rescue IOError, Errno::EPIPE
           nil
         end
-        Thread.new do
-          stdin_read.read
-        rescue StandardError
-          nil
-        end
+        Thread.new { stdin_read.read rescue nil }
 
         client
       end

@@ -34,7 +34,7 @@ module SorbetDeadcode
         kind == other.kind
     end
 
-    alias eql? ==
+    alias_method :eql?, :==
 
     def hash
       [name, full_name, kind].hash

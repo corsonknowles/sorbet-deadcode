@@ -19,7 +19,7 @@ module SorbetDeadcode
       Tempfile.create(["deadcode", ".json"]) do |f|
         Index.new(dead_definitions: results, paths: [FIXTURES_PATH]).write(f.path)
 
-        output = `#{Shellwords.escape(RbConfig.ruby)} -I #{Shellwords.escape(LIB)} #{Shellwords.escape(EXE)} --report #{Shellwords.escape(f.path)} --confidence 2>&1` # rubocop:disable Layout/LineLength
+        output = `#{Shellwords.escape(RbConfig.ruby)} -I #{Shellwords.escape(LIB)} #{Shellwords.escape(EXE)} --report #{Shellwords.escape(f.path)} --confidence 2>&1`
 
         assert_includes output, "Loaded #{results.size} dead code candidates"
         # Confidence tier tag ([high]/[medium]/[low]) only appears via the shared
@@ -28,17 +28,18 @@ module SorbetDeadcode
       end
     end
 
+
     def test_app_only_analysis
       # Analyze only app code (no specs)
       results = SorbetDeadcode.analyze(
-        File.join(FIXTURES_PATH, "app")
+        File.join(FIXTURES_PATH, "app"),
       )
 
       dead_names = results.map(&:full_name)
 
       # Cross-file calls keep methods alive
-      refute_includes dead_names, "User#full_name" # called from UserService
-      refute_includes dead_names, "User#company" # called from UserService
+      refute_includes dead_names, "User#full_name"   # called from UserService
+      refute_includes dead_names, "User#company"      # called from UserService
       refute_includes dead_names, "Company#employee_count" # called from UserService
 
       # These have no callers in app code
@@ -70,7 +71,7 @@ module SorbetDeadcode
       # Analyze full fixture tree but exclude the spec subdirectory within it
       results = SorbetDeadcode.analyze(
         FIXTURES_PATH,
-        exclude_paths: ["fixtures/spec/"]
+        exclude_paths: ["fixtures/spec/"],
       )
 
       dead_names = results.map(&:full_name)
@@ -83,7 +84,7 @@ module SorbetDeadcode
 
     def test_type_aware_display_name_disambiguation
       results = SorbetDeadcode.analyze(
-        File.join(FIXTURES_PATH, "app")
+        File.join(FIXTURES_PATH, "app"),
       )
 
       dead = results.select { |d| d.name == "display_name" }

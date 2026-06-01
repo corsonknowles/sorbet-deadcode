@@ -37,7 +37,7 @@ module SorbetDeadcode
         paths: paths,
         exclude_paths: exclude_paths,
         reference_paths: reference_paths,
-        dynamic_dispatch: dynamic_dispatch
+        dynamic_dispatch: dynamic_dispatch,
       )
       analyzer.run
     end
@@ -61,7 +61,7 @@ module SorbetDeadcode
         project_root: project_root,
         paths: paths,
         exclude_paths: exclude_paths,
-        parallel: parallel
+        parallel: parallel,
       )
       finder.run
     end
@@ -71,7 +71,7 @@ module SorbetDeadcode
         project_root: project_root,
         paths: paths,
         exclude_paths: exclude_paths,
-        parallel: parallel
+        parallel: parallel,
       )
       finder.run
     end
@@ -80,7 +80,7 @@ module SorbetDeadcode
       analyzer = Sorbet::FileTableAnalyzer.new(
         project_root: project_root,
         paths: paths,
-        exclude_paths: exclude_paths
+        exclude_paths: exclude_paths,
       )
       analyzer.run
     end
@@ -89,7 +89,7 @@ module SorbetDeadcode
       candidates = analyze(paths, exclude_paths: exclude_paths)
       verifier = Verifier::RipgrepVerifier.new(
         project_root: project_root,
-        exclude_paths: exclude_paths
+        exclude_paths: exclude_paths,
       )
       verifier.verify(candidates)
     end

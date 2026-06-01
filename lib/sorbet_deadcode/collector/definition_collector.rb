@@ -21,7 +21,7 @@ module SorbetDeadcode
           name: name,
           full_name: full_name,
           kind: :class,
-          location: format_location(node.location)
+          location: format_location(node.location),
         )
         @namespace_stack.push(name)
         super
@@ -35,7 +35,7 @@ module SorbetDeadcode
           name: name,
           full_name: full_name,
           kind: :module,
-          location: format_location(node.location)
+          location: format_location(node.location),
         )
         @namespace_stack.push(name)
         super
@@ -50,7 +50,7 @@ module SorbetDeadcode
           full_name: owner ? "#{owner}##{name}" : name,
           kind: :method,
           location: format_location(node.location),
-          owner_name: owner
+          owner_name: owner,
         )
         super
       end
@@ -63,7 +63,7 @@ module SorbetDeadcode
           kind: :constant,
           location: format_location(node.location),
           owner_name: current_namespace,
-          co_located_names: nested_constant_names(node.value)
+          co_located_names: nested_constant_names(node.value),
         )
         super
       end
@@ -128,7 +128,7 @@ module SorbetDeadcode
             full_name: owner ? "#{owner}##{writer_name}" : writer_name,
             kind: kind,
             location: format_location(arg.location),
-            owner_name: owner
+            owner_name: owner,
           )
         end
       end

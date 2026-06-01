@@ -18,11 +18,11 @@ module SorbetDeadcode
         definitions = collect_definitions(files)
 
         if definitions.empty?
-          warn "No definitions found."
+          $stderr.puts "No definitions found."
           return []
         end
 
-        warn "Found #{definitions.size} definitions to check."
+        $stderr.puts "Found #{definitions.size} definitions to check."
 
         client = Client.new(@project_root)
         begin
@@ -37,15 +37,15 @@ module SorbetDeadcode
       private
 
       def collect_files
-        @paths.flat_map do |path|
+        @paths.flat_map { |path|
           if File.file?(path)
             [path]
           else
             Dir.glob(File.join(path, "**", "*.rb"))
           end
-        end.reject do |f|
+        }.reject { |f|
           @exclude_paths.any? { |ep| f.include?(ep) }
-        end.sort
+        }.sort
       end
 
       def collect_definitions(files)
@@ -88,7 +88,7 @@ module SorbetDeadcode
           live_refs = filter_references(refs, file_path, line)
           dead << defn if live_refs.empty?
         rescue Client::Error => e
-          warn "\n  Skipping #{defn.full_name}: #{e.message}"
+          $stderr.puts "\n  Skipping #{defn.full_name}: #{e.message}"
         end
 
         $stderr.puts
@@ -111,7 +111,7 @@ module SorbetDeadcode
             begin
               client.async_references(file_path, line, column)
             rescue Client::Error => e
-              warn "\n  Skipping #{defn.full_name}: #{e.message}"
+              $stderr.puts "\n  Skipping #{defn.full_name}: #{e.message}"
               nil
             end
           end
@@ -125,7 +125,7 @@ module SorbetDeadcode
             begin
               refs = client.collect_response(req_id) || []
             rescue Client::Error => e
-              warn "\n  Skipping #{defn.full_name}: #{e.message}"
+              $stderr.puts "\n  Skipping #{defn.full_name}: #{e.message}"
               next
             end
 
@@ -156,10 +156,14 @@ module SorbetDeadcode
           end
         when :class
           match = source_line.match(/\bclass\s+#{Regexp.escape(defn.name)}\b/)
-          return match.begin(0) + match[0].index(defn.name) if match
+          if match
+            return match.begin(0) + match[0].index(defn.name)
+          end
         when :module
           match = source_line.match(/\bmodule\s+#{Regexp.escape(defn.name)}\b/)
-          return match.begin(0) + match[0].index(defn.name) if match
+          if match
+            return match.begin(0) + match[0].index(defn.name)
+          end
         when :constant
           match = source_line.match(/\b#{Regexp.escape(defn.name)}\s*=/)
           return match.begin(0) if match

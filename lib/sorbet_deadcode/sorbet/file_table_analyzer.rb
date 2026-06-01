@@ -28,17 +28,17 @@ module SorbetDeadcode
       def run
         symbol_table = load_symbol_table
         unless symbol_table
-          warn "Failed to load Sorbet symbol table. Falling back to Prism-only analysis."
+          $stderr.puts "Failed to load Sorbet symbol table. Falling back to Prism-only analysis."
           return fallback_prism_analysis
         end
 
         definitions = extract_definitions(symbol_table)
         if definitions.empty?
-          warn "No definitions found in symbol table."
+          $stderr.puts "No definitions found in symbol table."
           return []
         end
 
-        warn "Symbol table contains #{definitions.size} definitions."
+        $stderr.puts "Symbol table contains #{definitions.size} definitions."
 
         references = collect_prism_references
         @dead_definitions = find_dead(definitions, references)
@@ -52,13 +52,13 @@ module SorbetDeadcode
         stdout, stderr, status = Open3.capture3(*cmd, chdir: @project_root)
 
         unless status.success?
-          warn "srb tc --print=symbol-table-json failed: #{stderr.lines.first}"
+          $stderr.puts "srb tc --print=symbol-table-json failed: #{stderr.lines.first}"
           return nil
         end
 
         JSON.parse(stdout)
       rescue JSON::ParserError => e
-        warn "Failed to parse symbol table JSON: #{e.message}"
+        $stderr.puts "Failed to parse symbol table JSON: #{e.message}"
         nil
       end
 
@@ -82,7 +82,7 @@ module SorbetDeadcode
                   name: name,
                   full_name: full_name,
                   kind: :class,
-                  namespace: namespace
+                  namespace: namespace,
                 )
               end
             when "METHOD"
@@ -93,7 +93,7 @@ module SorbetDeadcode
                   name: name,
                   full_name: full_name,
                   kind: :method,
-                  namespace: namespace
+                  namespace: namespace,
                 )
               end
             end
@@ -103,10 +103,10 @@ module SorbetDeadcode
         children = node["children"]
         if children.is_a?(Array)
           child_ns = if node.dig("name", "kind") == "CONSTANT" && !synthetic_name?(node.dig("name", "name"))
-                       namespace + [node.dig("name", "name")]
-                     else
-                       namespace
-                     end
+            namespace + [node.dig("name", "name")]
+          else
+            namespace
+          end
 
           children.each do |child|
             defs.concat(extract_definitions(child, namespace: child_ns))
@@ -118,7 +118,6 @@ module SorbetDeadcode
 
       def synthetic_name?(name)
         return true unless name
-
         name.start_with?("<") || name == "initialize"
       end
 
@@ -129,14 +128,14 @@ module SorbetDeadcode
           full_name: full_name,
           kind: kind,
           location: "symbol-table",
-          owner_name: owner
+          owner_name: owner,
         )
       end
 
       def collect_prism_references
         analyzer = Analyzer::DeadCodeAnalyzer.new(
           paths: @paths,
-          exclude_paths: @exclude_paths
+          exclude_paths: @exclude_paths,
         )
         files = analyzer.send(:collect_files)
         files.each { |f| analyzer.send(:index_file, f) }
@@ -172,7 +171,7 @@ module SorbetDeadcode
       def fallback_prism_analysis
         Analyzer::DeadCodeAnalyzer.new(
           paths: @paths,
-          exclude_paths: @exclude_paths
+          exclude_paths: @exclude_paths,
         ).run
       end
     end

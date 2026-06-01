@@ -99,7 +99,7 @@ module SorbetDeadcode
               end
             end
           RUBY
-          "service.rb" => <<~RUBY
+          "service.rb" => <<~RUBY,
             class Service
               sig { params(company: Company).returns(String) }
               def show(company)
@@ -765,13 +765,12 @@ module SorbetDeadcode
       private
 
       def analyze_source(source)
+        # Temp dir is intentionally not cleaned up — the test process handles it.
         dir = Dir.mktmpdir
         File.write("#{dir}/test.rb", source)
         analyzer = DeadCodeAnalyzer.new(paths: [dir])
         analyzer.run
         analyzer
-
-        # Don't clean up — let the test process handle it
       end
 
       def analyze_sources(files)

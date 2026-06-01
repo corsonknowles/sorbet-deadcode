@@ -20,8 +20,8 @@ module SorbetDeadcode
         path
       end
 
-      def find(globs, **)
-        FileFinder.find(@dir, globs, **)
+      def find(globs, **opts)
+        FileFinder.find(@dir, globs, **opts)
       end
 
       def test_finds_matching_files_via_glob_fallback
