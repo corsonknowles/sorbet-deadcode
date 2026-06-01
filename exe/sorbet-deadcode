@@ -12,6 +12,17 @@ rescue StandardError
   nil
 end
 
+# Parse a --max-age value ("30d", "2w", "1m", "90") to seconds, or nil to disable.
+def parse_max_age(value)
+  text = value.to_s.strip.downcase
+  return nil if %w[0 all none off].include?(text)
+
+  m = text.match(/\A(\d+)\s*([dwm])?\z/)
+  return nil unless m
+
+  m[1].to_i * { "d" => 1, "w" => 7, "m" => 30 }.fetch(m[2] || "d") * 86_400
+end
+
 options = {
   paths: [],
   exclude_paths: ["/spec/", "/test/"],
@@ -31,6 +42,7 @@ options = {
   show_confidence: false,
   classify: false,
   only_action: nil,
+  recent_within: 30 * 86_400,
   plain: false,
   report_dynamic_dispatch: false,
   report_non_ruby: false,
@@ -131,6 +143,13 @@ OptionParser.new do |opts|
     "Only show candidates whose suggested action is ACTION",
     "(safe_delete, delete_with_spec, review, keep).") do |action|
     options[:only_action] = action.to_sym
+  end
+
+  opts.on("--max-age AGE",
+    "Treat definitions introduced within AGE (e.g. 30d, 2w, 1m; default 30d) as",
+    "recently-added: flag them and route to review instead of safe_delete. Uses git",
+    "line history. Pass 0/all to disable.") do |value|
+    options[:recent_within] = parse_max_age(value)
   end
 
   opts.on("--plain",
@@ -309,6 +328,7 @@ if do_classify
   classifier = SorbetDeadcode::Classifier.new(
     project_root: options[:project_root],
     exclude_paths: options[:exclude_paths],
+    recent_within: options[:recent_within],
   )
   classified = classifier.classify(results)
   classified = if options[:only_action]

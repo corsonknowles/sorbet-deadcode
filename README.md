@@ -67,6 +67,10 @@ route the rest to review). Live candidates (action `keep`) are hidden.
 | `review` | Referenced from non-Ruby files or an inline-constant side effect — needs a human |
 | `keep` | Real production references exist — not dead (hidden unless `--only keep`) |
 
+Definitions introduced within the last **30 days** (per git line history) are flagged
+`recently_added`, downgraded to low confidence, and routed to `review` — they're likely
+in-flight work, not dead. Tune with `--max-age 2w` / `1m`, or `--max-age 0` to disable.
+
 Use `--only ACTION` to filter (e.g. `--only safe_delete`), or `--plain` for a flat list.
 
 ### Ripgrep Verification (Default)

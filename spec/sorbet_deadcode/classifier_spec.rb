@@ -28,6 +28,37 @@ module SorbetDeadcode
       Classifier.new(project_root: @dir).classify([candidate]).first
     end
 
+    def git_commit_now(rel)
+      env = { "GIT_CONFIG_GLOBAL" => File::NULL, "GIT_CONFIG_SYSTEM" => File::NULL,
+              "GIT_AUTHOR_NAME" => "T", "GIT_AUTHOR_EMAIL" => "t@e.com",
+              "GIT_COMMITTER_NAME" => "T", "GIT_COMMITTER_EMAIL" => "t@e.com" }
+      system(env, "git", "-C", @dir, "init", "-q", "--initial-branch=main", out: File::NULL, err: File::NULL)
+      system(env, "git", "-C", @dir, "add", rel, out: File::NULL, err: File::NULL)
+      system(env, "git", "-C", @dir, "commit", "-q", "-m", "x", out: File::NULL, err: File::NULL)
+    end
+
+    def test_recently_added_definition_is_flagged_and_routed_to_review
+      path = write("app/foo.rb", "class Foo\n  def fresh; end\nend\n")
+      git_commit_now("app/foo.rb")
+
+      result = Classifier.new(project_root: @dir, recent_within: 30 * 86_400)
+                         .classify([defn("fresh", location: "#{path}:2")]).first
+
+      assert_includes result.flags, :recently_added
+      assert_equal :review, result.suggested_action
+      assert_equal Analyzer::Confidence::LOW, result.confidence
+    end
+
+    def test_recency_disabled_when_recent_within_nil
+      path = write("app/foo.rb", "class Foo\n  def fresh; end\nend\n")
+      git_commit_now("app/foo.rb")
+
+      result = Classifier.new(project_root: @dir, recent_within: nil)
+                         .classify([defn("fresh", location: "#{path}:2")]).first
+
+      refute_includes result.flags, :recently_added
+    end
+
     def test_kept_by_marks_low_confidence_review_with_source_flag
       path = write("app/foo.rb", "class Foo\n  def kept_method\n  end\nend\n")
       candidate = defn("kept_method", location: "#{path}:2")
