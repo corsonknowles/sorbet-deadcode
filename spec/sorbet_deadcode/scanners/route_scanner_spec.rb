@@ -55,6 +55,43 @@ module SorbetDeadcode
         assert refs.any? { |r| r.name == "check" && r.receiver_type == "HealthController" }
       end
 
+      # ---- controller:/action: keyword form -------------------------------
+
+      def test_controller_action_keyword_string_form
+        refs = write_routes("get '/x', controller: 'admin/widgets', action: 'show'")
+        assert refs.any? { |r| r.kind == :method && r.name == "show" && r.receiver_type == "Admin::WidgetsController" }
+        assert_includes refs.select { |r| r.kind == :constant }.map(&:name), "WidgetsController"
+      end
+
+      def test_controller_action_keyword_symbol_form
+        refs = write_routes("get '/x', controller: :widgets, action: :show")
+        assert refs.any? { |r| r.name == "show" && r.receiver_type == "WidgetsController" }
+      end
+
+      def test_action_defaults_to_leading_symbol_arg
+        # `get :show, controller: :widgets` — the action is the leading symbol argument.
+        refs = write_routes("get :show, controller: :widgets")
+        assert refs.any? { |r| r.name == "show" && r.receiver_type == "WidgetsController" }
+      end
+
+      def test_controller_keyword_without_action_still_keeps_class_alive
+        refs = write_routes("get '/x', controller: 'admin/widgets'")
+        assert_includes refs.select { |r| r.kind == :constant }.map(&:name), "WidgetsController"
+      end
+
+      # ---- hash-rocket form: '/path' => 'controller#action' ---------------
+
+      def test_hash_rocket_form_emits_reference
+        refs = write_routes("get '/widgets' => 'widgets#index'")
+        assert refs.any? { |r| r.name == "index" && r.receiver_type == "WidgetsController" }
+        assert_includes refs.select { |r| r.kind == :constant }.map(&:name), "WidgetsController"
+      end
+
+      def test_hash_rocket_namespaced_controller
+        refs = write_routes("post '/x' => 'admin/widgets#create'")
+        assert refs.any? { |r| r.name == "create" && r.receiver_type == "Admin::WidgetsController" }
+      end
+
       # ---- resources / resource -------------------------------------------
 
       def test_resources_emits_all_crud_actions

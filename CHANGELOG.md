@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+- **RouteScanner now recognizes `controller:`/`action:` and hash-rocket route forms** (#67) —
+  previously only `to: 'controller#action'` was parsed, so routes written as
+  `get '/x', controller: 'admin/widgets', action: 'show'`, `get :show, controller: :widgets`,
+  or `get '/x' => 'widgets#index'` (common in `draw`-ed split route files) were ignored and
+  their controllers/actions reported dead. All three forms now emit the action + controller
+  references.
+
 ### Changed
 - **Project root now defaults to the git toplevel** (#62) — previously `--project-root`
   defaulted to the current directory, so running from inside a pack/subdirectory scoped
