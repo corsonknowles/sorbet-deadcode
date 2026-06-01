@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Changed
+- **Refiners now apply to every analysis mode** (#30) — the route / YAML / ERB / RABL
+  refiners previously ran only on the default Prism path, so routed controllers and
+  template-/config-referenced methods resurfaced as false positives under `--lsp`,
+  `--hybrid`, and `--file-table`. Refiner application is now centralized after mode
+  dispatch and runs for all modes (respecting `--no-routes`/`--no-yaml`/`--no-erb`/`--no-rabl`).
+  `--reference-root` remains default-mode-only and now emits a warning instead of being
+  silently ignored when combined with `--lsp`/`--hybrid`/`--file-table`.
+
 ### Fixed
 - **Dynamic-namespace refs now use the fully-qualified name** — `mailer_preview` (and the new
   generator) detection emitted the dynamic-namespace reference using the class's *short* name
