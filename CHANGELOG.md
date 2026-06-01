@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Added
+- **GraphQL SDL (`.graphql`) scanner/refiner** (#27, completes epic #4) — standalone
+  `*.graphql` / `*.graphqls` schema documents (e.g. checked-in federation/subgraph
+  schemas) name fields and arguments that map to Ruby resolver methods with no Ruby call
+  site. A new `GraphqlScanner`/`GraphqlRefiner` parses those documents, maps camelCase
+  field/argument names to snake_case (emitting both spellings, name-only), and keeps the
+  backing resolver methods alive. Descriptions, inline strings, comments, directive names,
+  and enum values are ignored. Runs by default across all analysis modes; disable with
+  `--no-graphql`. (The graphql-ruby DSL written *in Ruby* — `field`/`argument`/`builds`/
+  `prepare:`/`loads:` — was already handled by the ReferenceCollector.)
+
 ### Changed
 - **Shared `Ripgrep` search helper** (#38) — the exclude-glob construction and the
   predicate-name (`?`/`!`/`=`) word-boundary vs. literal splitting were duplicated in

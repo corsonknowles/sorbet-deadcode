@@ -76,6 +76,10 @@ OptionParser.new do |opts|
     options[:no_rabl] = true
   end
 
+  opts.on("--no-graphql", "Disable standalone GraphQL SDL (.graphql) scanning for resolver method references.") do
+    options[:no_graphql] = true
+  end
+
   opts.on("--index OUTPUT_FILE",
     "Run analysis and save the full dead-code index to a JSON file for later use.",
     "Combine with --report to load-and-filter instead of re-analyzing.") do |f|
@@ -210,6 +214,7 @@ unless from_index
   refiners << SorbetDeadcode::Refiners::YamlRefiner.new(options[:project_root]) unless options[:no_yaml]
   refiners << SorbetDeadcode::Refiners::ErbRefiner.new(options[:project_root]) unless options[:no_erb]
   refiners << SorbetDeadcode::Refiners::RablRefiner.new(options[:project_root]) unless options[:no_rabl]
+  refiners << SorbetDeadcode::Refiners::GraphqlRefiner.new(options[:project_root]) unless options[:no_graphql]
   results = refiners.reduce(results) { |candidates, refiner| refiner.refine(candidates) }
 end
 
