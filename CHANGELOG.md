@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Fixed
+- **`T::Enum` values are no longer reported dead** (#70) — enum values declared as
+  `Active = new('active')` inside a `T::Enum` subclass's `enums do` block are reached via
+  `.values` / `.deserialize(<string>)` / serialization, not by their Ruby constant, so they
+  were false positives. The collector no longer records them as definitions. Plain constants
+  inside an enum class, and `= new(...)` assignments outside a `T::Enum`, are unaffected.
+  Handles both `< T::Enum` and `< ::T::Enum`.
 - **RouteScanner now recognizes `controller:`/`action:` and hash-rocket route forms** (#67) —
   previously only `to: 'controller#action'` was parsed, so routes written as
   `get '/x', controller: 'admin/widgets', action: 'show'`, `get :show, controller: :widgets`,
