@@ -151,6 +151,7 @@ would otherwise produce false positives:
 | Framework YAML | `method: Foo::BarSanitizer.sanitize_x` | Keeps the YAML-referenced method + class alive (`--no-yaml` to disable) |
 | ERB templates | `<%= widget.display_name %>` | Keeps template-referenced methods/constants alive (`--no-erb` to disable) |
 | RABL templates | `attributes :display_name` / `node(:s) { \|w\| w.status }` | Keeps template-referenced methods/constants alive (`--no-rabl` to disable) |
+| GraphQL SDL (`.graphql`) | `type User { fullName: String }` | Keeps the resolver method (`full_name`) alive (`--no-graphql` to disable) |
 | Always-alive methods | `initialize`, `respond_to_missing?`, etc. | Never reported dead |
 
 ## How It Works
