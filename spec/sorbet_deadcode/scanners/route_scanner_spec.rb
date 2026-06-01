@@ -35,7 +35,7 @@ module SorbetDeadcode
 
       def test_post_to_emits_reference
         refs = write_routes("post '/widgets', to: 'widgets#create'")
-        assert(refs.any? { |r| r.name == "create" && r.receiver_type == "WidgetsController" })
+        assert refs.any? { |r| r.name == "create" && r.receiver_type == "WidgetsController" }
       end
 
       def test_namespaced_controller_in_to_string
@@ -52,7 +52,7 @@ module SorbetDeadcode
 
       def test_symbol_to_value
         refs = write_routes("get '/status', to: :'health#check'")
-        assert(refs.any? { |r| r.name == "check" && r.receiver_type == "HealthController" })
+        assert refs.any? { |r| r.name == "check" && r.receiver_type == "HealthController" }
       end
 
       # ---- resources / resource -------------------------------------------
@@ -186,7 +186,7 @@ module SorbetDeadcode
           "get '/admin', to: 'admin/dashboard#index'")
 
         refs = RouteScanner.new(@dir).references
-        assert(refs.any? { |r| r.name == "index" && r.receiver_type == "Admin::DashboardController" })
+        assert refs.any? { |r| r.name == "index" && r.receiver_type == "Admin::DashboardController" }
       end
 
       # ---- edge cases -----------------------------------------------------
@@ -203,7 +203,7 @@ module SorbetDeadcode
 
       def test_scope_without_module_option_does_not_crash
         refs = write_routes("scope '/api' do\n  get '/health', to: 'health#check'\nend")
-        assert(refs.any? { |r| r.name == "check" })
+        assert refs.any? { |r| r.name == "check" }
       end
 
       def test_resources_with_string_only
@@ -227,7 +227,7 @@ module SorbetDeadcode
       def test_to_without_hash_symbol_ignored
         # `to:` value is a proc/lambda — should not crash
         refs = write_routes("get '/ping', to: -> (env) { [200, {}, ['ok']] }")
-        refute(refs.any? { |r| r.name == "ping" })
+        refute refs.any? { |r| r.name == "ping" }
       end
 
       def test_route_method_with_no_to_key_is_skipped
@@ -237,7 +237,7 @@ module SorbetDeadcode
 
       def test_resources_with_string_name
         refs = write_routes("resources 'widgets'")
-        assert(refs.any? { |r| r.name == "index" && r.receiver_type == "WidgetsController" })
+        assert refs.any? { |r| r.name == "index" && r.receiver_type == "WidgetsController" }
       end
 
       def test_resources_with_unknown_keyword_option_ignored
@@ -248,7 +248,7 @@ module SorbetDeadcode
 
       def test_to_string_without_hash_emits_no_reference
         refs = write_routes("get '/health', to: 'healthcheck'")
-        refute(refs.any? { |r| r.kind == :method && r.name == "healthcheck" })
+        refute refs.any? { |r| r.kind == :method && r.name == "healthcheck" }
       end
 
       def test_controller_class_name_already_ending_in_controller
@@ -272,7 +272,7 @@ module SorbetDeadcode
 
       def test_resources_first_arg_nil_is_skipped
         refs = write_routes("resources")
-        assert_empty(refs.select { |r| r.kind == :method })
+        assert_empty refs.select { |r| r.kind == :method }
       end
 
       def test_camelize_handles_single_word

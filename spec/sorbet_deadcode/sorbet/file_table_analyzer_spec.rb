@@ -424,7 +424,7 @@ module SorbetDeadcode
 
         results = capture_stderr { analyzer.run }
 
-        assert(results.any? { |d| d.name == "orphan_method" })
+        assert results.any? { |d| d.name == "orphan_method" }
       ensure
         FileUtils.remove_entry(dir) if dir
       end

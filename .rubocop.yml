@@ -28,6 +28,11 @@ Metrics:
 Lint/DuplicateBranch:
   Enabled: false
 
+# `assert refs.any? { ... }` reads fine and binds the block to the inner call as
+# intended; wrapping every spec assertion in parens is pure noise.
+Lint/AmbiguousBlockAssociation:
+  Enabled: false
+
 # Keyword args are often kept for interface symmetry (test helpers, finder
 # constructors) even when a given path doesn't read them.
 Lint/UnusedMethodArgument:

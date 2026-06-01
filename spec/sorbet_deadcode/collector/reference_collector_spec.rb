@@ -140,7 +140,7 @@ module SorbetDeadcode
 
       def test_non_matcher_call_emits_no_predicate_reference
         refs = collect("foo.bar")
-        refute(refs.any? { |r| r.kind == :method && r.name == "bar?" })
+        refute refs.any? { |r| r.kind == :method && r.name == "bar?" }
       end
 
       def test_delegate_emits_method_reference
@@ -299,7 +299,7 @@ module SorbetDeadcode
           end
         RUBY
 
-        refute(refs.any? { |r| r.name == "build_not_a_symbol" })
+        refute refs.any? { |r| r.name == "build_not_a_symbol" }
       end
 
       def test_graphql_argument_with_hash_splat_does_not_crash
@@ -316,7 +316,7 @@ module SorbetDeadcode
           argument :name, String, null: false, description: "The name"
         RUBY
 
-        refute(refs.any? { |r| r.kind == :method && r.name == "description" })
+        refute refs.any? { |r| r.kind == :method && r.name == "description" }
       end
 
       def test_aasm_with_hash_splat_does_not_crash
@@ -356,7 +356,7 @@ module SorbetDeadcode
           end
         RUBY
 
-        refute(refs.any? { |r| r.kind == :method && r.name == "active" })
+        refute refs.any? { |r| r.kind == :method && r.name == "active" }
       end
 
       def test_aasm_collect_symbol_or_array_with_non_symbol_element
@@ -367,7 +367,7 @@ module SorbetDeadcode
           end
         RUBY
 
-        refute(refs.any? { |r| r.kind == :method && r.name == "not_a_symbol" })
+        refute refs.any? { |r| r.kind == :method && r.name == "not_a_symbol" }
       end
 
       def test_graphql_argument_non_symbol_prepare_is_skipped
@@ -377,7 +377,7 @@ module SorbetDeadcode
           end
         RUBY
 
-        refute(refs.any? { |r| r.kind == :method && r.name.start_with?("load_") })
+        refute refs.any? { |r| r.kind == :method && r.name.start_with?("load_") }
       end
 
       def test_graphql_non_builds_non_keyword_arg_is_skipped
@@ -388,7 +388,7 @@ module SorbetDeadcode
         RUBY
 
         # No prepare:/method: keyword → no extra method refs emitted
-        refute(refs.any? { |r| r.kind == :method && r.name == "id" })
+        refute refs.any? { |r| r.kind == :method && r.name == "id" }
       end
 
       def test_graphql_field_method_emits_reference
@@ -434,7 +434,7 @@ module SorbetDeadcode
           end
         RUBY
 
-        refute(refs.any? { |r| r.kind == :method && r.name == "SomeValidator" })
+        refute refs.any? { |r| r.kind == :method && r.name == "SomeValidator" }
       end
 
       def test_accepts_nested_attributes_emits_prefix_reference
@@ -455,7 +455,7 @@ module SorbetDeadcode
           end
         RUBY
 
-        refute(refs.any? { |r| r.kind == :method_prefix && r.name.include?("line_items") })
+        refute refs.any? { |r| r.kind == :method_prefix && r.name.include?("line_items") }
       end
 
       def test_class_with_no_name_components_is_not_dynamic
@@ -467,7 +467,7 @@ module SorbetDeadcode
           end
         RUBY
 
-        refute(refs.any? { |r| r.kind == :dynamic_namespace })
+        refute refs.any? { |r| r.kind == :dynamic_namespace }
       end
 
       def test_class_inheriting_from_preview_superclass_is_dynamic
@@ -540,7 +540,7 @@ module SorbetDeadcode
           end
         RUBY
 
-        assert(refs.any? { |r| r.kind == :dynamic_namespace })
+        assert refs.any? { |r| r.kind == :dynamic_namespace }
       end
 
       def test_thor_subclass_marks_namespace_dynamic
@@ -550,7 +550,7 @@ module SorbetDeadcode
           end
         RUBY
 
-        assert(refs.any? { |r| r.kind == :dynamic_namespace })
+        assert refs.any? { |r| r.kind == :dynamic_namespace }
       end
 
       def test_non_generator_class_is_not_dynamic_via_generator_rule
@@ -560,7 +560,7 @@ module SorbetDeadcode
           end
         RUBY
 
-        refute(refs.any? { |r| r.kind == :dynamic_namespace })
+        refute refs.any? { |r| r.kind == :dynamic_namespace }
       end
 
       def test_non_preview_class_is_not_dynamic
@@ -571,7 +571,7 @@ module SorbetDeadcode
           end
         RUBY
 
-        refute(refs.any? { |r| r.kind == :dynamic_namespace })
+        refute refs.any? { |r| r.kind == :dynamic_namespace }
       end
 
       def test_bare_preview_name_outside_mailer_path_is_not_dynamic
@@ -585,7 +585,7 @@ module SorbetDeadcode
           end
         RUBY
 
-        refute(refs.any? { |r| r.kind == :dynamic_namespace })
+        refute refs.any? { |r| r.kind == :dynamic_namespace }
       end
 
       def test_bare_preview_name_inside_mailer_path_is_dynamic
@@ -596,7 +596,7 @@ module SorbetDeadcode
           end
         RUBY
 
-        assert(refs.any? { |r| r.kind == :dynamic_namespace })
+        assert refs.any? { |r| r.kind == :dynamic_namespace }
       end
 
       def test_visitor_subclass_emits_visit_prefix_reference
@@ -617,7 +617,7 @@ module SorbetDeadcode
           end
         RUBY
 
-        refute(refs.any? { |r| r.kind == :method_prefix && r.name == "visit_" })
+        refute refs.any? { |r| r.kind == :method_prefix && r.name == "visit_" }
       end
 
       def test_class_with_no_superclass_does_not_emit_visit_prefix
@@ -627,7 +627,7 @@ module SorbetDeadcode
           end
         RUBY
 
-        refute(refs.any? { |r| r.kind == :method_prefix && r.name == "visit_" })
+        refute refs.any? { |r| r.kind == :method_prefix && r.name == "visit_" }
       end
 
       def test_self_receiver_resolves_to_namespace_with_resolver
@@ -713,7 +713,7 @@ module SorbetDeadcode
         # exactly one dump_ prefix (from method a), none leaked into b
         assert_equal ["dump_"], prefixes
         # b's send(m) falls back to the namespace exclusion
-        assert(refs.any? { |r| r.kind == :dynamic_namespace })
+        assert refs.any? { |r| r.kind == :dynamic_namespace }
       end
 
       def test_local_var_interpolation_prefix_emits_method_prefix
@@ -728,7 +728,7 @@ module SorbetDeadcode
 
         prefix = refs.find { |r| r.kind == :method_prefix }
         assert_equal "dump_", prefix&.name
-        refute(refs.any? { |r| r.kind == :dynamic_namespace })
+        refute refs.any? { |r| r.kind == :dynamic_namespace }
       end
 
       # Inline literal symbol array iterated and dispatched
@@ -744,7 +744,7 @@ module SorbetDeadcode
         names = refs.select { |r| r.kind == :method }.map(&:name)
         assert_includes names, "start"
         assert_includes names, "stop"
-        refute(refs.any? { |r| r.kind == :dynamic_namespace })
+        refute refs.any? { |r| r.kind == :dynamic_namespace }
       end
 
       # Symbol array via a constant, then iterated
@@ -773,7 +773,7 @@ module SorbetDeadcode
         RUBY
 
         # items is not a literal symbol array → conservative namespace fallback
-        assert(refs.any? { |r| r.kind == :dynamic_namespace })
+        assert refs.any? { |r| r.kind == :dynamic_namespace }
       end
 
       def test_iteration_with_block_pass_falls_through
@@ -825,7 +825,7 @@ module SorbetDeadcode
         RUBY
 
         # Empty array → not a resolvable symbol array → conservative fallback
-        assert(refs.any? { |r| r.kind == :dynamic_namespace })
+        assert refs.any? { |r| r.kind == :dynamic_namespace }
       end
 
       def test_mixed_array_not_treated_as_symbol_array
@@ -837,8 +837,8 @@ module SorbetDeadcode
           end
         RUBY
 
-        refute(refs.any? { |r| r.kind == :method && r.name == "a" })
-        assert(refs.any? { |r| r.kind == :dynamic_namespace })
+        refute refs.any? { |r| r.kind == :method && r.name == "a" }
+        assert refs.any? { |r| r.kind == :dynamic_namespace }
       end
 
       def test_local_var_non_interpolated_assignment_not_tracked_as_prefix
@@ -851,8 +851,8 @@ module SorbetDeadcode
           end
         RUBY
 
-        refute(refs.any? { |r| r.kind == :method_prefix })
-        assert(refs.any? { |r| r.kind == :dynamic_namespace })
+        refute refs.any? { |r| r.kind == :method_prefix }
+        assert refs.any? { |r| r.kind == :dynamic_namespace }
       end
 
       def test_iteration_without_block_param_falls_through
@@ -885,7 +885,7 @@ module SorbetDeadcode
           send(method_name)
         RUBY
 
-        refute(refs.any? { |r| r.kind == :method_prefix || r.kind == :dynamic_namespace })
+        refute refs.any? { |r| r.kind == :method_prefix || r.kind == :dynamic_namespace }
       end
 
       def test_interpolation_leading_with_expression_emits_suffix_not_namespace
@@ -900,10 +900,10 @@ module SorbetDeadcode
           end
         RUBY
 
-        refute(refs.any? { |r| r.kind == :method_prefix })
+        refute refs.any? { |r| r.kind == :method_prefix }
         suffix_ref = refs.find { |r| r.kind == :method_suffix }
         assert_equal "_suffix", suffix_ref.name
-        refute(refs.any? { |r| r.kind == :dynamic_namespace })
+        refute refs.any? { |r| r.kind == :dynamic_namespace }
       end
 
       def test_local_var_interpolated_suffix_emits_method_suffix
@@ -949,8 +949,8 @@ module SorbetDeadcode
 
         # Only the first method's send should carry the `_at` suffix; the second reuses
         # the name `m` as a plain parameter and must fall back to dynamic_namespace.
-        assert_equal(1, refs.count { |r| r.kind == :method_suffix })
-        assert(refs.any? { |r| r.kind == :dynamic_namespace })
+        assert_equal 1, refs.count { |r| r.kind == :method_suffix }
+        assert refs.any? { |r| r.kind == :dynamic_namespace }
       end
 
       def test_operator_or_write_emits_reader_and_writer
@@ -1029,7 +1029,7 @@ module SorbetDeadcode
         RUBY
 
         # The `Foo::Bar` in the class declaration is a definition, not a reference.
-        refute(refs.any? { |r| r.kind == :constant && r.name == "Foo::Bar" })
+        refute refs.any? { |r| r.kind == :constant && r.name == "Foo::Bar" }
       end
 
       def test_local_variable_write_with_non_call_value_is_ignored

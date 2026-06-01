@@ -262,7 +262,6 @@ module SorbetDeadcode
         client = MockClient.new({})
         bad = make_defn("ghost", :method, "no_colon_in_location")
         finder = DeadCodeFinder.new(project_root: dir, paths: [dir], parallel: 2)
-        finder.method(:collect_files)
         finder.define_singleton_method(:find_dead) do |c, defs|
           send(:find_dead_parallel, c, defs + [bad])
         end
