@@ -31,6 +31,7 @@ options = {
   show_confidence: false,
   classify: false,
   only_action: nil,
+  plain: false,
   report_dynamic_dispatch: false,
 }
 
@@ -126,10 +127,15 @@ OptionParser.new do |opts|
   end
 
   opts.on("--only ACTION",
-    "With --classify, only show candidates whose suggested action is ACTION",
+    "Only show candidates whose suggested action is ACTION",
     "(safe_delete, delete_with_spec, review, keep).") do |action|
-    options[:classify] = true
     options[:only_action] = action.to_sym
+  end
+
+  opts.on("--plain",
+    "Print a flat list of candidates instead of the default confidence/action",
+    "tiered view. Combine with --no-verify for a quick, ripgrep-free scan.") do
+    options[:plain] = true
   end
 
   opts.on("--report-dynamic-dispatch",
@@ -244,7 +250,17 @@ unless from_index
   results = refiners.reduce(results) { |candidates, refiner| refiner.refine(candidates) }
 end
 
-if !from_index && options[:verify] && !results.empty?
+# Default to the classified, confidence/action-tiered view. --plain prints a flat list,
+# and --no-verify (no ripgrep) implies --plain since classification needs ripgrep.
+do_classify = (options[:classify] || options[:only_action] || !options[:plain]) && options[:verify]
+
+# The standalone verify pass produces the canonical verified-dead set consumed by --index,
+# --intersect, and the plain list. Skip it for the default classify view: the classifier
+# does its own ripgrep over the pre-verify candidates and yields richer tiers (spec-only /
+# non-Ruby / inline-constant / keep) that verify would otherwise have silently dropped.
+needs_verified_set = options[:plain] || options[:output_index] || options[:intersect_index]
+
+if !from_index && options[:verify] && needs_verified_set && !results.empty?
   verifier = SorbetDeadcode::Verifier::RipgrepVerifier.new(
     project_root: options[:project_root],
     exclude_paths: options[:exclude_paths],
@@ -278,17 +294,22 @@ if results.empty?
   exit 0
 end
 
-# --classify: annotate each candidate with confidence, refs, flags, suggested action.
-if options[:classify]
+# Default view: annotate each candidate with confidence, refs, flags, and a suggested
+# action. Live candidates (:keep) are hidden unless explicitly requested via --only keep.
+if do_classify
   classifier = SorbetDeadcode::Classifier.new(
     project_root: options[:project_root],
     exclude_paths: options[:exclude_paths],
   )
   classified = classifier.classify(results)
-  classified = classified.select { |c| c.suggested_action == options[:only_action] } if options[:only_action]
+  classified = if options[:only_action]
+    classified.select { |c| c.suggested_action == options[:only_action] }
+  else
+    classified.reject { |c| c.suggested_action == :keep }
+  end
 
   if classified.empty?
-    $stderr.puts "No candidates matched."
+    $stderr.puts "No dead code found."
     exit 0
   end
 
