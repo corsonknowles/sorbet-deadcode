@@ -48,7 +48,8 @@ module SorbetDeadcode
         before_update after_update around_update
         before_save after_save around_save
         before_destroy after_destroy around_destroy
-        after_commit after_rollback
+        after_commit after_rollback before_commit
+        after_create_commit after_update_commit after_destroy_commit after_save_commit
         after_initialize after_find
         before_action after_action around_action
         prepend_before_action append_before_action
