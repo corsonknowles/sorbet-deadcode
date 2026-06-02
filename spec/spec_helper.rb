@@ -12,6 +12,10 @@ SimpleCov.start do
   # version.rb is required by the gemspec at Bundler load time, before
   # SimpleCov starts, so it can never be tracked. It is a bare constant.
   add_filter "lib/sorbet_deadcode/version.rb"
+  # The spoom runner only executes with a live spoom install against a real project context
+  # (it can't run in the unit sandbox); its pure row->Index mapping is unit-tested via
+  # Spoom::Converter. Integration is exercised manually / behind the optional spoom dep.
+  add_filter "lib/sorbet_deadcode/spoom/runner.rb"
 
   # Line coverage is held at 100%. Branch coverage floor is 96%: the small
   # remainder are defensive parser-edge guards (e.g. `next unless node.is_a?(...)`
