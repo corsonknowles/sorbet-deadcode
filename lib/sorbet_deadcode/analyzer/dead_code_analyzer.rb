@@ -14,6 +14,19 @@ module SorbetDeadcode
         inspect
       ]).freeze
 
+      # Framework convention hooks: methods a gem/framework invokes *by name* (reflection /
+      # convention), so they have no explicit Ruby call site. Reporting them dead is wrong even
+      # though nothing references them. These names are distinctive enough that a user method of
+      # the same name is overwhelmingly the framework hook. (A configurable plugin API — see the
+      # ReferenceCollector DSL refactor — will let projects register their own framework hooks,
+      # e.g. base-class-scoped conventions like RuboCop cops' `on_*`; this built-in set covers
+      # the unambiguous, widely-used ones.)
+      FRAMEWORK_HOOK_METHODS = Set.new(%w[
+        sidekiq_unique_context
+        sidekiq_retries_exhausted
+        sidekiq_retry_in
+      ]).freeze
+
       attr_reader :definitions, :references, :type_resolver
 
       # reference_paths: additional paths to scan for *references only* (no definitions
@@ -185,6 +198,7 @@ module SorbetDeadcode
           # respond_to_missing?: called by respond_to? / method_missing internally.
           # use_relative_model_naming?: called by ActiveModel::Naming.
           ALWAYS_ALIVE_METHODS.include?(definition.name) ||
+            FRAMEWORK_HOOK_METHODS.include?(definition.name) ||
             dynamically_dispatched?(definition, ref_index) ||
             typed_alive?(definition, ref_index) ||
             name_alive?(definition, ref_index)

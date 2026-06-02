@@ -24,6 +24,12 @@
   matching the bare `permit` name can only keep a setter alive.
 
 ### Fixed
+- **Framework convention hooks are kept alive** — methods a framework invokes *by name* via
+  convention/reflection (no explicit Ruby call site) were reported dead. Added a built-in
+  `FRAMEWORK_HOOK_METHODS` keep-alive set covering unambiguous, widely-used hooks
+  (`sidekiq_unique_context`, `sidekiq_retries_exhausted`, `sidekiq_retry_in`). A configurable
+  plugin API (planned) will let projects register their own framework conventions, including
+  base-class-scoped ones like RuboCop cops' `on_*` handlers.
 - **Validation/callback `if:`/`unless:` conditional methods are recognized** (#94) — a method used
   only as a `validate`/`validates`/callback guard (`validate :x, if: :ready?`, `validates :c,
   presence: true, unless: :skip?`) was reported dead: `collect_validator_references` only scanned
