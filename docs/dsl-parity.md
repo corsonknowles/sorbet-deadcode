@@ -86,5 +86,6 @@ Legend: ✅ parity · ➕ exceeds spoom (more precise / broader) · 🔁 differe
 - bin/boot constants `APP_PATH` / `ENGINE_PATH` / `ENGINE_ROOT` / `APP_RAKEFILE` — live in
   `bin/`/`config/` files normally outside analysis scope.
 - `dup`/`clone` → `initialize_copy`/`initialize_dup`/`initialize_clone` — rare; revisit if it surfaces.
-- Blanket helper-file ignore (`app/helpers/**`) — we instead keep only **view-referenced** helpers
-  (ERB/RABL refiners), which is more precise. See #103.
+- Blanket helper-file ignore (`app/helpers/**`) — intentionally **not** reimplemented. Helper
+  accuracy is delegated to the `--spoom` intersection (spoom's Rails plugin blanket-ignores
+  `app/helpers`), so we add no custom helper scanning. See #103.
