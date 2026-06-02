@@ -46,6 +46,13 @@ module SorbetDeadcode
       # `field :x, method: :method_name` → calls `method_name`
       GRAPHQL_DSL_METHODS = %w[builds argument field mutation].to_set.freeze
 
+      # graphql-ruby invokes these methods by convention on type/mutation/resolver/scalar/enum
+      # classes (no explicit Ruby call site). Kept alive only inside a detected GraphQL class
+      # (owner-scoped) — a same-named method on an unrelated class is still checked.
+      GRAPHQL_HOOK_METHODS = %w[
+        resolve coerce_input coerce_result resolve_type graphql_name subscribed unsubscribed
+      ].freeze
+
       # ActiveModel/Rails DSL methods that take symbol names of methods to call.
       # `validate :method_name` dispatches via send(method_name) during validation.
       # `before_validation/after_validation :method` similarly dispatches.
@@ -116,6 +123,16 @@ module SorbetDeadcode
           # classes invoke every public instance method as an ordered step/command via
           # reflection, not by explicit Ruby calls. Keep the whole namespace alive.
           @references << Reference.new(name: current_namespace, location: location, kind: :dynamic_namespace)
+        end
+
+        if graphql_type_class?(node)
+          # graphql-ruby calls resolve/coerce_*/resolve_type/etc by convention on this class.
+          # Emit an OWNER-TYPED reference (receiver_type = this class) per hook so only this
+          # class's hook methods are kept alive — unlike a global ignore, a same-named method
+          # on a non-GraphQL class is still subject to dead-code analysis.
+          GRAPHQL_HOOK_METHODS.each do |hook|
+            @references << Reference.new(name: hook, location: location, kind: :method, receiver_type: current_namespace)
+          end
         end
 
         super
@@ -755,6 +772,18 @@ module SorbetDeadcode
         return false unless superclass
 
         superclass.slice.include?("Visitor")
+      end
+
+      # A graphql-ruby type/mutation/resolver/scalar/enum/etc. class, detected by superclass:
+      # a canonical `GraphQL::Schema::*` base, or an app base following the `*Base<Kind>`
+      # convention (e.g. `Types::BaseObject`, `Mutations::BaseMutation`, `BaseResolver`).
+      def graphql_type_class?(class_node)
+        superclass = class_node.superclass
+        return false unless superclass
+
+        slice = superclass.slice
+        slice.include?("GraphQL::Schema::") ||
+          slice.match?(/(?:\A|::)Base(Object|Mutation|Resolver|InputObject|Interface|Enum|Scalar|Union|Subscription)\z/)
       end
 
       # Rails generators (`< Rails::Generators::Base` / `NamedBase`) and Thor command
