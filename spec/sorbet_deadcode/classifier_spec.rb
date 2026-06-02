@@ -176,6 +176,29 @@ module SorbetDeadcode
       assert_equal [nil, nil], classifier.send(:split_match_line, "no-colon-here\n")
     end
 
+    def test_split_match_line_keeps_namespaced_token_intact
+      classifier = Classifier.new(project_root: @dir)
+      path, token = classifier.send(:split_match_line, "app/a/b/c.rb:A::B::C\n")
+      assert_equal "app/a/b/c.rb", path
+      assert_equal "A::B::C", token
+    end
+
+    # A compactly-defined class's name is the fully-qualified constant ("A::B::C"),
+    # which contains "::". A cross-file reference to it must be counted; splitting the
+    # rg `path:A::B::C` line on the last colon shears the token and hides the reference,
+    # falsely marking the live class safe_delete.
+    def test_namespaced_class_reference_is_kept
+      path = write("app/a/b/c.rb", "class A::B::C\n  def self.run; end\nend\n")
+      write("app/caller.rb", "A::B::C.run\n")
+      candidate = Definition.new(name: "A::B::C", full_name: "A::B::C", kind: :class, location: "#{path}:1")
+
+      result = Classifier.new(project_root: @dir).classify([candidate]).first
+
+      assert_equal :keep, result.suggested_action
+      assert_includes result.flags, :live_reference
+      assert_operator result.external_reference_count, :>=, 1
+    end
+
     def test_classifies_multiple_candidates
       path = write("app/foo.rb", <<~RUBY)
         class Foo
