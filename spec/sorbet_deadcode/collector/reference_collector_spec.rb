@@ -855,6 +855,64 @@ module SorbetDeadcode
         assert prefix, "expected a method_prefix reference for 'visit_'"
       end
 
+      def test_rubocop_cop_keeps_on_handlers_alive
+        refs = collect(<<~RUBY)
+          class NoFoo < RuboCop::Cop::Base
+            def on_send(node); end
+
+            def investigate(processed_source); end
+          end
+        RUBY
+
+        assert refs.any? { |r| r.kind == :method_prefix && r.name == "on_" },
+          "expected a method_prefix reference for 'on_' in a RuboCop cop"
+        assert refs.any? { |r| r.kind == :method && r.name == "investigate" }
+      end
+
+      def test_on_handler_on_non_cop_class_is_not_blanket_kept
+        refs = collect(<<~RUBY)
+          class PlainService
+            def on_send(node); end
+          end
+        RUBY
+
+        refute refs.any? { |r| r.kind == :method_prefix && r.name == "on_" }
+      end
+
+      def test_custom_registered_convention_keeps_methods_alive
+        registry = Conventions::Registry.default.register(
+          name: "event_consumer",
+          superclass: "EventConsumer",
+          keep_methods: ["consume"],
+        )
+        refs = collect(<<~RUBY, conventions: registry)
+          class ContractorCreated < EventConsumer
+            def consume(event); end
+          end
+        RUBY
+
+        consume = refs.find { |r| r.kind == :method && r.name == "consume" }
+        assert consume, "expected the custom convention to keep 'consume' alive"
+        assert_equal "ContractorCreated", consume.receiver_type
+      end
+
+      def test_convention_matched_by_included_module
+        registry = Conventions::Registry.new.register(
+          name: "consumer",
+          includes: ["Karafka::Consumer"],
+          keep_methods: ["consume"],
+        )
+        refs = collect(<<~RUBY, conventions: registry)
+          class OrdersConsumer
+            include Karafka::Consumer
+
+            def consume; end
+          end
+        RUBY
+
+        assert refs.any? { |r| r.kind == :method && r.name == "consume" }
+      end
+
       def test_non_visitor_subclass_does_not_emit_visit_prefix
         refs = collect(<<~RUBY)
           class Transformer < Prism::Mutation
@@ -1418,13 +1476,13 @@ module SorbetDeadcode
 
       private
 
-      def collect(source, type_resolver: nil)
-        collect_at_path("test.rb", source, type_resolver: type_resolver)
+      def collect(source, type_resolver: nil, conventions: nil)
+        collect_at_path("test.rb", source, type_resolver: type_resolver, conventions: conventions)
       end
 
-      def collect_at_path(file_path, source, type_resolver: nil)
+      def collect_at_path(file_path, source, type_resolver: nil, conventions: nil)
         result = Prism.parse(source)
-        collector = ReferenceCollector.new(file_path, type_resolver: type_resolver)
+        collector = ReferenceCollector.new(file_path, type_resolver: type_resolver, conventions: conventions)
         collector.visit(result.value)
         collector.references
       end

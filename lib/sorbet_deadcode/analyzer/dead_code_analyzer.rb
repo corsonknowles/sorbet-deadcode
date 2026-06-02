@@ -41,11 +41,14 @@ module SorbetDeadcode
       #     user can review. Use with caution (may include false positives).
       # Precisely-resolved dispatch (literal symbols, interpolation prefixes, and finite
       # symbol-list iteration) always keeps the targeted methods alive regardless of mode.
-      def initialize(paths:, exclude_paths: [], reference_paths: nil, dynamic_dispatch: :exclude)
+      def initialize(paths:, exclude_paths: [], reference_paths: nil, dynamic_dispatch: :exclude, conventions: nil)
         @paths = Array(paths)
         @exclude_paths = Array(exclude_paths)
         @reference_paths = reference_paths ? Array(reference_paths) : []
         @dynamic_dispatch = dynamic_dispatch
+        # Base-class-scoped framework conventions consulted by the ReferenceCollector. Defaults to
+        # the built-ins; a project can pass a registry extended via config (see Conventions::Registry).
+        @conventions = conventions || Conventions::Registry.default
         @definitions = []
         @references = []
         @type_resolver = Resolver::TypeResolver.new
@@ -119,7 +122,7 @@ module SorbetDeadcode
 
         node = result.value
         extract_type_info(node, file)
-        ref_collector = Collector::ReferenceCollector.new(file, type_resolver: @type_resolver)
+        ref_collector = Collector::ReferenceCollector.new(file, type_resolver: @type_resolver, conventions: @conventions)
         ref_collector.visit(node)
         @references.concat(ref_collector.references)
       end
@@ -141,7 +144,7 @@ module SorbetDeadcode
 
         extract_type_info(node, file)
 
-        ref_collector = Collector::ReferenceCollector.new(file, type_resolver: @type_resolver)
+        ref_collector = Collector::ReferenceCollector.new(file, type_resolver: @type_resolver, conventions: @conventions)
         ref_collector.visit(node)
         @references.concat(ref_collector.references)
       end

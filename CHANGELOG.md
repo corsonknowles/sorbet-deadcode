@@ -3,6 +3,29 @@
 ## Unreleased
 
 ### Added
+- **Configurable framework-convention registry** (#97) — base-class-scoped conventions that keep
+  framework-invoked methods alive ("for classes matching X, keep methods/prefixes Y") are now a
+  first-class, extensible registry instead of hard-coded `if`s. The previously-inlined detections
+  (visitor / graphql / active_job+sidekiq / minitest / each_validator / migration / generator) are
+  expressed as built-in conventions, and a **new built-in covers RuboCop cops** — every `on_*`
+  handler plus the investigation lifecycle is kept alive, **scoped to Cop subclasses** so `on_*`
+  isn't allow-listed globally. Projects can register their own conventions for in-house base classes
+  (a custom job/cop/event-consumer base) **without patching the gem**, declaratively via a
+  `.sorbet-deadcode.yml` (or `--config FILE`):
+
+  ```yaml
+  conventions:
+    - name: event_consumer
+      superclass: EventConsumer      # Regexp string; or `includes: [Karafka::Consumer]`, or `name_suffix: Consumer`
+      keep_methods: [consume]        # owner-scoped; also `keep_prefixes: [on_]` / `keep_namespace: true`
+  ```
+
+  Matching is by superclass / included module / class-name suffix (optionally path-gated), and
+  kept names are owner-scoped, so a same-named method on an unrelated class is still analyzed. The
+  matcher (`Conventions::Convention`) is a pure value object; `Conventions::Registry` holds the
+  built-ins + custom entries.
+
+### Added
 - **`--remove TIER`: batch, tier-aware dead-code removal** (#117) — closes the detect → remove
   loop. Selects a classified action tier (`safe_delete`, `delete_with_spec`, `review`, or `all`)
   and deletes those definitions by **leveraging spoom's** syntax-aware `Deadcode::Remover` (which

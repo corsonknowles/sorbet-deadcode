@@ -49,6 +49,7 @@ options = {
   spoom: false,
   remove: nil,
   apply: false,
+  config: nil,
 }
 
 OptionParser.new do |opts|
@@ -199,6 +200,13 @@ OptionParser.new do |opts|
     options[:reference_root] = dir
   end
 
+  opts.on("--config FILE",
+    "Load framework-convention definitions from a YAML file (default: .sorbet-deadcode.yml",
+    "at the project root). Lets you keep in-house base classes' framework-invoked methods",
+    "alive (scoped by superclass / included module / name) without patching the gem.") do |file|
+    options[:config] = file
+  end
+
   opts.on("-h", "--help", "Show this help") do
     puts opts
     exit
@@ -221,6 +229,17 @@ options[:exclude_paths] = [] if options[:include_specs]
 # explicit --project-root opts out.
 if options[:project_root].nil?
   options[:project_root] = options[:isolated] ? "." : (git_toplevel || ".")
+end
+
+# Load framework conventions: an explicit --config, or a .sorbet-deadcode.yml at the project root
+# (skipped under --isolated). Custom conventions extend the built-ins (see Conventions::Registry).
+options[:conventions] = nil
+config_path = options[:config]
+config_path ||= File.join(options[:project_root], ".sorbet-deadcode.yml") unless options[:isolated]
+if config_path && File.exist?(config_path)
+  require "yaml"
+  options[:conventions] = SorbetDeadcode::Conventions::Registry.from_config(YAML.safe_load_file(config_path))
+  $stderr.puts "[sorbet-deadcode] loaded conventions from #{config_path}"
 end
 
 mode_count = [options[:lsp], options[:hybrid], options[:file_table]].count(true)
@@ -281,6 +300,7 @@ else
     exclude_paths: options[:exclude_paths],
     reference_paths: options[:reference_root],
     dynamic_dispatch: options[:report_dynamic_dispatch] ? :report : :exclude,
+    conventions: options[:conventions],
   )
 end
 
