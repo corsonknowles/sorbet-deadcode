@@ -671,6 +671,47 @@ module SorbetDeadcode
         assert_includes analyzer.dead_definitions.map(&:name), "perform"
       end
 
+      def test_minitest_test_methods_and_lifecycle_kept_alive
+        analyzer = analyze_source(<<~RUBY)
+          class UserTest < ActiveSupport::TestCase
+            def setup
+              @user = build_user
+            end
+
+            def test_is_valid
+              assert @user.valid?
+            end
+
+            def unused_helper
+              42
+            end
+          end
+        RUBY
+
+        dead = analyzer.dead_definitions.map(&:name)
+        refute_includes dead, "test_is_valid"
+        refute_includes dead, "setup"
+        assert_includes dead, "unused_helper" # non-lifecycle, non-test_ method is still dead
+      end
+
+      def test_assert_predicate_keeps_predicate_alive
+        analyzer = analyze_source(<<~RUBY)
+          class Account
+            def closed?
+              @closed
+            end
+          end
+
+          class AccountTest < Minitest::Test
+            def test_closed
+              assert_predicate(account, :closed?)
+            end
+          end
+        RUBY
+
+        refute_includes analyzer.dead_definitions.map(&:name), "closed?"
+      end
+
       def test_framework_convention_hook_is_never_dead
         # sidekiq_unique_context is invoked by Sidekiq by name (convention), so it has no
         # explicit Ruby call site but must not be reported dead.
