@@ -990,6 +990,66 @@ module SorbetDeadcode
         refute_includes refs.map(&:name), "charity_ein="
       end
 
+      def test_permit_symbol_keys_emit_writer_references
+        refs = collect("params.permit(:display_name, :category_slugs)\n")
+        names = refs.map(&:name)
+        assert_includes names, "display_name="
+        assert_includes names, "category_slugs="
+      end
+
+      def test_permit_hash_style_keys_emit_writer_references
+        refs = collect("params.permit(:foo, bar: [], baz: [:x])\n")
+        names = refs.map(&:name)
+        assert_includes names, "foo="
+        assert_includes names, "bar="
+        assert_includes names, "baz="
+        # the nested `:x` names a nested param, not a setter — not emitted
+        refute_includes names, "x="
+      end
+
+      def test_permit_ignores_non_symbol_and_splat_args
+        refs = collect("params.permit(*allowed, dynamic_key => [])\n")
+        # no crash, and no stray writer reference from the non-symbol forms
+        assert(refs.is_a?(Array))
+        refute_includes refs.map(&:name), "dynamic_key="
+      end
+
+      def test_permit_nested_collection_hash_keys_emit_writer_references
+        refs = collect(<<~RUBY)
+          @params.permit(
+            apps: [
+              :slug,
+              { type_uuids: [], category_slugs: [], app_photos_attributes: [:description] },
+            ],
+          )
+        RUBY
+        names = refs.map(&:name)
+        assert_includes names, "apps="
+        assert_includes names, "type_uuids="
+        assert_includes names, "category_slugs="
+        assert_includes names, "app_photos_attributes="
+        # bare symbols inside a value array name nested params, not setters
+        refute_includes names, "slug="
+        refute_includes names, "description="
+      end
+
+      def test_setter_kept_alive_by_permit_is_not_dead
+        source = <<~RUBY
+          class App
+            def category_slugs=(value)
+              @category_slugs = value
+            end
+
+            def sync(params)
+              assign_attributes(params.permit(:category_slugs))
+            end
+          end
+        RUBY
+
+        refs = collect(source)
+        assert_includes refs.map(&:name), "category_slugs="
+      end
+
       def test_bare_send_with_symbol_has_no_receiver_type
         refs = collect(<<~RUBY)
           send(:bare_target)

@@ -12,6 +12,17 @@
   monorepos), degrading gracefully outside a checkout. Configure with `--max-age`
   (`30d` / `2w` / `1m`); `--max-age 0` disables.
 
+### Added
+- **Strong-params `permit` keys are detected as writer references** (#81) — attribute
+  writers set via `params.permit(...)` + mass-assignment (`assign_attributes`/`update`) were
+  reported dead, because the attribute names appear only as `permit` symbol keys, never as a
+  literal `foo=` or `Model.new(foo:)`. The collector now emits a `foo=` writer reference for
+  every `permit` symbol key — positional (`permit(:foo)`) and hash-style at any nesting depth
+  (`permit(apps: [{ category_slugs: [] }])` keeps `apps=` and `category_slugs=` alive), since
+  Rails permits collections as `key: [{ nested_key: [] }]`. Bare symbols inside a value array
+  (`baz: [:x]`) name nested scalar params, not setters, so they're left alone. Conservative:
+  matching the bare `permit` name can only keep a setter alive.
+
 ### Fixed
 - **YAML class-registry configs are now recognized** (#76) — `YamlScanner` only matched
   `key: Module::Class.method` values, so classes listed in registry configs (loaded via
