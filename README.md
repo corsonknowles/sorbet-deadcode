@@ -198,6 +198,29 @@ vocabulary). Spoom is an **optional dependency** — only required when you pass
 flows through classification and confidence scoring, so the index → classify workflow
 works end to end.
 
+### Removing dead code (`--remove`)
+
+Once you trust a tier, `--remove` deletes it for you, closing the detect → remove loop:
+
+```bash
+# Dry run: print a unified diff of what would be removed (nothing is written)
+sorbet-deadcode app/ --remove safe_delete
+
+# Write the edits
+sorbet-deadcode app/ --remove safe_delete --apply
+
+# Only remove what BOTH sorbet-deadcode and Spoom call dead (maximum safety)
+sorbet-deadcode app/ --remove safe_delete --spoom --apply
+```
+
+`TIER` is a classifier action: `safe_delete`, `delete_with_spec`, `review`, or `all` (every
+actionable tier). Removal **leverages Spoom's** syntax-aware remover, so deleting a method/class
+also removes its attached comments and Sorbet `sig`s. Beyond Spoom's one-location-at-a-time
+`spoom deadcode remove`, we remove a whole tier in one pass, default to a dry-run diff, and skip
+(reporting, never aborting) any location Spoom can't remove. Methods, classes, modules, and
+constants are supported today; `attr_reader`/`attr_writer` and inline-constant members are skipped
+and reported. Like `--spoom`, this needs the optional `spoom` gem.
+
 ### Reporting dynamic dispatch (`--report-dynamic-dispatch`)
 
 By default, a method is conservatively kept alive when its namespace contains a

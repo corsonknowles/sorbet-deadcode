@@ -47,6 +47,8 @@ options = {
   report_dynamic_dispatch: false,
   report_non_ruby: false,
   spoom: false,
+  remove: nil,
+  apply: false,
 }
 
 OptionParser.new do |opts|
@@ -150,6 +152,18 @@ OptionParser.new do |opts|
     "Only show candidates whose suggested action is ACTION",
     "(safe_delete, delete_with_spec, review, keep).") do |action|
     options[:only_action] = action.to_sym
+  end
+
+  opts.on("--remove TIER",
+    "Remove dead code in the given action TIER (safe_delete, delete_with_spec,",
+    "review, or all) by leveraging spoom's syntax-aware remover (requires the spoom",
+    "gem). Dry run by default — prints a unified diff; pass --apply to write. Pair with",
+    "--spoom to only remove candidates both tools agree are dead.") do |tier|
+    options[:remove] = tier.to_sym
+  end
+
+  opts.on("--apply", "With --remove, actually write the edits instead of printing a dry-run diff.") do
+    options[:apply] = true
   end
 
   opts.on("--max-age AGE",
@@ -285,9 +299,16 @@ unless from_index
   results = refiners.reduce(results) { |candidates, refiner| refiner.refine(candidates) }
 end
 
+# --remove operates on classified action tiers, which need ripgrep verification.
+if options[:remove] && !options[:verify]
+  $stderr.puts "Error: --remove needs classification; it can't be combined with --no-verify."
+  exit 1
+end
+
 # Default to the classified, confidence/action-tiered view. --plain prints a flat list,
 # and --no-verify (no ripgrep) implies --plain since classification needs ripgrep.
-do_classify = (options[:classify] || options[:only_action] || !options[:plain]) && options[:verify]
+# --remove always classifies (it selects candidates by suggested action tier).
+do_classify = (options[:classify] || options[:only_action] || options[:remove] || !options[:plain]) && options[:verify]
 
 # The standalone verify pass produces the canonical verified-dead set consumed by --index,
 # --intersect, and the plain list. Skip it for the default classify view: the classifier
@@ -350,6 +371,53 @@ if do_classify
     recent_within: options[:recent_within],
   )
   classified = classifier.classify(results)
+
+  # --remove: hand the selected action tier to spoom's syntax-aware remover. `all` removes every
+  # actionable tier (everything except :keep); otherwise only the named tier (e.g. safe_delete).
+  if options[:remove]
+    tier = options[:remove]
+    targets = if tier == :all
+      classified.reject { |c| c.suggested_action == :keep }
+    else
+      classified.select { |c| c.suggested_action == tier }
+    end
+
+    if targets.empty?
+      $stderr.puts "No candidates in tier '#{tier}' to remove."
+      exit 0
+    end
+
+    mode = options[:apply] ? "Removing" : "Dry run (pass --apply to write):"
+    $stderr.puts "#{mode} #{targets.size} candidate(s) in tier '#{tier}' via spoom's remover.\n\n"
+
+    outcomes = SorbetDeadcode::Spoom::Remover.remove(
+      targets.map(&:definition),
+      project_root: options[:project_root],
+      apply: options[:apply],
+    )
+
+    outcomes.each do |outcome|
+      defn = outcome.definition
+      case outcome.status
+      when :would_remove
+        puts "# #{defn.kind} #{defn.full_name} (#{defn.location})"
+        puts outcome.detail
+        puts
+      when :removed
+        puts "  [removed] #{defn.kind} #{defn.full_name} -> #{outcome.detail}"
+      when :skipped
+        puts "  [skipped] #{defn.kind} #{defn.full_name}: #{outcome.detail}"
+      when :failed
+        puts "  [failed]  #{defn.kind} #{defn.full_name}: #{outcome.detail}"
+      end
+    end
+
+    counts = outcomes.group_by(&:status).transform_values(&:size)
+    $stderr.puts "\n#{counts.map { |status, n| "#{n} #{status}" }.join(', ')}."
+    $stderr.puts "Re-run with --apply to write these edits." unless options[:apply]
+    exit 0
+  end
+
   classified = if options[:only_action]
     classified.select { |c| c.suggested_action == options[:only_action] }
   else
