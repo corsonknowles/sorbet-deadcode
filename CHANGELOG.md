@@ -24,6 +24,12 @@
   matching the bare `permit` name can only keep a setter alive.
 
 ### Fixed
+- **ActiveJob/Sidekiq job methods are kept alive, scoped to job classes** (#101) — the framework
+  invokes `perform` (and `build_enumerator`/`each_iteration` on iteration jobs) by convention.
+  A class detected as a job (superclass `ApplicationJob`/`ApplicationWorker`/`ActiveJob::Base`, or
+  `include Sidekiq::Job`/`Sidekiq::Worker`) now emits an **owner-typed** reference for those hooks,
+  and `before/after/around_enqueue`/`_perform` callbacks resolve their symbol targets. Owner-scoped,
+  so a `perform` on a non-job service object is still analyzed (unlike a global-name ignore).
 - **GraphQL framework methods are kept alive, scoped to GraphQL classes** (#100) — graphql-ruby
   invokes `resolve`, `coerce_input`, `coerce_result`, `resolve_type`, `graphql_name`,
   `subscribed`, `unsubscribed` by convention (no Ruby call site). A class detected as a GraphQL

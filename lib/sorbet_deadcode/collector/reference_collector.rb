@@ -53,6 +53,15 @@ module SorbetDeadcode
         resolve coerce_input coerce_result resolve_type graphql_name subscribed unsubscribed
       ].freeze
 
+      # ActiveJob / Sidekiq invoke these by convention on job/worker classes (the framework
+      # calls `perform`; iteration jobs use build_enumerator/each_iteration). Kept alive only
+      # inside a detected job class (owner-scoped) — a `perform` on a service object is still
+      # checked, unlike a blanket global-name ignore.
+      ACTIVEJOB_HOOK_METHODS = %w[perform build_enumerator each_iteration].freeze
+
+      # Superclass names that mark an ActiveJob/Sidekiq job class.
+      JOB_SUPERCLASS = /\A(ApplicationJob|ApplicationWorker)\z|ActiveJob::Base/
+
       # ActiveModel/Rails DSL methods that take symbol names of methods to call.
       # `validate :method_name` dispatches via send(method_name) during validation.
       # `before_validation/after_validation :method` similarly dispatches.
@@ -69,6 +78,8 @@ module SorbetDeadcode
         before_action after_action around_action
         prepend_before_action append_before_action
         skip_before_action
+        before_enqueue after_enqueue around_enqueue
+        before_perform after_perform around_perform
       ].to_set.freeze
 
       # Rails validation/callback conditional options whose value is a method name (or array of
@@ -131,6 +142,14 @@ module SorbetDeadcode
           # class's hook methods are kept alive — unlike a global ignore, a same-named method
           # on a non-GraphQL class is still subject to dead-code analysis.
           GRAPHQL_HOOK_METHODS.each do |hook|
+            @references << Reference.new(name: hook, location: location, kind: :method, receiver_type: current_namespace)
+          end
+        end
+
+        if job_class?(node)
+          # ActiveJob/Sidekiq call perform (and build_enumerator/each_iteration on iteration
+          # jobs) by convention. Owner-typed so a `perform` on a non-job class is still checked.
+          ACTIVEJOB_HOOK_METHODS.each do |hook|
             @references << Reference.new(name: hook, location: location, kind: :method, receiver_type: current_namespace)
           end
         end
@@ -772,6 +791,30 @@ module SorbetDeadcode
         return false unless superclass
 
         superclass.slice.include?("Visitor")
+      end
+
+      # An ActiveJob / Sidekiq job class. Detected by superclass (`ApplicationJob`,
+      # `ActiveJob::Base`, `ApplicationWorker`) or by a `include Sidekiq::Job` / `Sidekiq::Worker`
+      # in the class body.
+      def job_class?(class_node)
+        return true if class_node.superclass&.slice&.match?(JOB_SUPERCLASS)
+
+        includes_module?(class_node, "Sidekiq::Job", "Sidekiq::Worker")
+      end
+
+      # True if the class body has a top-level `include <Mod>` for any of the given module names.
+      def includes_module?(class_node, *module_names)
+        body = class_node.body
+        return false unless body.is_a?(Prism::StatementsNode)
+
+        body.body.any? do |stmt|
+          next false unless stmt.is_a?(Prism::CallNode) && stmt.name == :include && stmt.receiver.nil?
+
+          args = stmt.arguments
+          next false unless args
+
+          args.arguments.any? { |arg| module_names.include?(arg.slice) }
+        end
       end
 
       # A graphql-ruby type/mutation/resolver/scalar/enum/etc. class, detected by superclass:
