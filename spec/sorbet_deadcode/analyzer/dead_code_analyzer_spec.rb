@@ -611,6 +611,66 @@ module SorbetDeadcode
         assert_includes analyzer.dead_definitions.map(&:name), "resolve"
       end
 
+      def test_activejob_perform_kept_alive_in_job_class
+        analyzer = analyze_source(<<~RUBY)
+          class SendEmailJob < ApplicationJob
+            def perform(user_id)
+              deliver(user_id)
+            end
+          end
+        RUBY
+
+        refute_includes analyzer.dead_definitions.map(&:name), "perform"
+      end
+
+      def test_sidekiq_worker_perform_kept_alive_via_include
+        analyzer = analyze_source(<<~RUBY)
+          class SyncWorker
+            include Sidekiq::Job
+
+            def perform(id)
+              sync(id)
+            end
+          end
+        RUBY
+
+        refute_includes analyzer.dead_definitions.map(&:name), "perform"
+      end
+
+      def test_activejob_perform_callback_kept_alive
+        analyzer = analyze_source(<<~RUBY)
+          class SendEmailJob < ApplicationJob
+            before_perform :prepare_context
+
+            def prepare_context
+              @ctx = true
+            end
+
+            def perform; end
+          end
+        RUBY
+
+        refute_includes analyzer.dead_definitions.map(&:name), "prepare_context"
+      end
+
+      def test_perform_on_non_job_class_is_still_dead
+        # Owner-scoped: perform is kept alive only inside job classes, so a service object's
+        # dead perform is still found (exceeds a blunt global-name ignore). The non-Sidekiq
+        # includes (incl. a malformed bare `include`) must not falsely mark this a job.
+        analyzer = analyze_source(<<~RUBY)
+          class CalculatorService < BaseService
+            include
+            include SomeConcern
+
+            def perform(input)
+              input * 2
+            end
+          end
+        RUBY
+
+        assert_includes analyzer.dead_definitions.map(&:name), "perform"
+      end
+
       def test_framework_convention_hook_is_never_dead
         # sidekiq_unique_context is invoked by Sidekiq by name (convention), so it has no
         # explicit Ruby call site but must not be reported dead.
