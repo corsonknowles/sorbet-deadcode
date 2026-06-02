@@ -566,6 +566,51 @@ module SorbetDeadcode
         refute_includes dead_names, "respond_to_missing?"
       end
 
+      def test_graphql_resolve_hook_kept_alive_in_graphql_class
+        analyzer = analyze_source(<<~RUBY)
+          class CreateThing < Mutations::BaseMutation
+            def resolve(input:)
+              persist(input)
+            end
+          end
+        RUBY
+
+        refute_includes analyzer.dead_definitions.map(&:name), "resolve"
+      end
+
+      def test_graphql_scalar_coerce_hooks_kept_alive
+        analyzer = analyze_source(<<~RUBY)
+          class DateScalar < Types::BaseScalar
+            def self.coerce_input(value, _ctx)
+              Date.iso8601(value)
+            end
+
+            def self.coerce_result(value, _ctx)
+              value.iso8601
+            end
+          end
+        RUBY
+
+        dead = analyzer.dead_definitions.map(&:name)
+        refute_includes dead, "coerce_input"
+        refute_includes dead, "coerce_result"
+      end
+
+      def test_resolve_on_non_graphql_class_is_still_dead
+        # Owner-scoped: the GraphQL hooks are kept alive only inside GraphQL classes, so a
+        # same-named method on an unrelated class is still subject to analysis (exceeds the
+        # blunt global-name ignore).
+        analyzer = analyze_source(<<~RUBY)
+          class PlainService
+            def resolve(input)
+              input
+            end
+          end
+        RUBY
+
+        assert_includes analyzer.dead_definitions.map(&:name), "resolve"
+      end
+
       def test_framework_convention_hook_is_never_dead
         # sidekiq_unique_context is invoked by Sidekiq by name (convention), so it has no
         # explicit Ruby call site but must not be reported dead.

@@ -24,6 +24,13 @@
   matching the bare `permit` name can only keep a setter alive.
 
 ### Fixed
+- **GraphQL framework methods are kept alive, scoped to GraphQL classes** (#100) — graphql-ruby
+  invokes `resolve`, `coerce_input`, `coerce_result`, `resolve_type`, `graphql_name`,
+  `subscribed`, `unsubscribed` by convention (no Ruby call site). A class detected as a GraphQL
+  type/mutation/resolver/scalar/enum (superclass is `GraphQL::Schema::*` or an app `*Base<Kind>`
+  base) now emits an **owner-typed** reference for each hook, so those methods aren't reported
+  dead. Unlike a blanket global-name ignore, a same-named method on an unrelated class is still
+  analyzed.
 - **Framework convention hooks are kept alive** — methods a framework invokes *by name* via
   convention/reflection (no explicit Ruby call site) were reported dead. Added a built-in
   `FRAMEWORK_HOOK_METHODS` keep-alive set covering unambiguous, widely-used hooks
