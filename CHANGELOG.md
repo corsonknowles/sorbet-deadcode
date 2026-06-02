@@ -3,6 +3,27 @@
 ## Unreleased
 
 ### Added
+- **Rails/Ruby DSL parity with spoom + a documented support matrix** (#98) — cataloged spoom's
+  dead-code plugins, diffed against ours, and closed the gaps so the supported convention surface
+  is complete and tracked (in [`docs/dsl-parity.md`](docs/dsl-parity.md)) rather than rediscovered
+  one false positive at a time. New coverage:
+  - **Ruby lifecycle hooks always alive**: `==`, `included`, `extended`, `inherited`, `prepended`,
+    `method_added`.
+  - **Rails convention methods always alive**: `persisted?`, `to_param`, `table_name_prefix`.
+  - **Callback completeness**: `after_touch`; the full controller `*_action` family
+    (`prepend_`/`append_`/`skip_` × `after`/`around`); `setup`/`teardown` symbol args.
+  - **`validates!` / `validates_each`** handled like `validates` (positional args are attributes;
+    options map to validator constants; `if:`/`unless:` are method refs).
+  - **Reflection**: `alias_method :new, :old` (keeps `old`), `method(:foo)`, and
+    `const_get`/`const_defined?`/`const_source_location` (keep the named constant).
+  - **RuboCop cop constants** `MSG` / `RESTRICT_ON_SEND` kept alive, owner-scoped, via the
+    convention registry's new `keep_constants`.
+
+  Each pattern has a regression test. Where we intentionally diverge from spoom we stay *more*
+  precise (e.g. controllers via route scanning, `validates` positional args as attributes not
+  methods, convention names owner-scoped) — see the matrix.
+
+### Added
 - **CLI parity with `spoom deadcode`: `--sort`, `--show-*`, `--extensions`** (#118) — rounds out
   the surface so the tool is a full superset, not just on detection accuracy.
   - `--sort name|location` orders the report (classified or plain) by full name or `file:line`.

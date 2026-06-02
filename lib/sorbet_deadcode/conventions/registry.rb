@@ -9,7 +9,7 @@ module SorbetDeadcode
     class Registry
       # Recognized convention option keys (used when loading from YAML/config).
       CONFIG_KEYS = %i[name superclass includes name_suffix path_includes
-                       keep_methods keep_prefixes keep_namespace].freeze
+                       keep_methods keep_prefixes keep_constants keep_namespace].freeze
 
       # Built-in conventions. Each scopes a generic, framework-invoked name set to the classes that
       # actually use it (by superclass / included module / name), so the same name on an unrelated
@@ -41,6 +41,7 @@ module SorbetDeadcode
             superclass: /RuboCop::Cop|(?:\A|::)\w*Cop\z/,
             keep_prefixes: ["on_"],
             keep_methods: %w[investigate on_new_investigation after_investigation],
+            keep_constants: %w[MSG RESTRICT_ON_SEND],
           ),
 
           # Minitest / ActiveSupport::TestCase: test_* methods and lifecycle hooks run by reflection.

@@ -15,15 +15,17 @@ module SorbetDeadcode
     # The kept-alive set is one or more of:
     #   * keep_methods    — exact method names, kept OWNER-SCOPED to the matching class
     #   * keep_prefixes   — method-name prefixes kept alive (e.g. `on_`, `visit_`, `test_`)
+    #   * keep_constants  — constant names read by the framework (e.g. a cop's `MSG`), kept
+    #                       OWNER-SCOPED to the matching class
     #   * keep_namespace  — keep the whole class alive (every method), for reflection-driven classes
     #
     # Convention is a pure value object (no Prism/IO), so it is unit-tested in isolation; the
     # ReferenceCollector extracts the signals from the AST and turns matches into References.
     class Convention
-      attr_reader :name, :keep_methods, :keep_prefixes
+      attr_reader :name, :keep_methods, :keep_prefixes, :keep_constants
 
       def initialize(name:, superclass: nil, includes: nil, name_suffix: nil, path_includes: nil,
-                     keep_methods: [], keep_prefixes: [], keep_namespace: false)
+                     keep_methods: [], keep_prefixes: [], keep_constants: [], keep_namespace: false)
         @name = name
         @superclass = superclass.is_a?(String) ? Regexp.new(superclass) : superclass
         @includes = includes && Array(includes)
@@ -31,6 +33,7 @@ module SorbetDeadcode
         @path_includes = path_includes
         @keep_methods = Array(keep_methods).map(&:to_s)
         @keep_prefixes = Array(keep_prefixes).map(&:to_s)
+        @keep_constants = Array(keep_constants).map(&:to_s)
         @keep_namespace = keep_namespace
       end
 
