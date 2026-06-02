@@ -130,6 +130,22 @@ module SorbetDeadcode
         assert_equal %w[CATEGORY_A CATEGORY_B], parent.co_located_names
       end
 
+      def test_inline_constants_in_t_let_array_are_co_located
+        defs = collect(<<~RUBY)
+          class Config
+            ADDONS = T.let(
+              [
+                ADDON_NAME = "name",
+                ADDON_ID = "id",
+              ].freeze, T::Array[String]
+            )
+          end
+        RUBY
+
+        parent = defs.find { |d| d.name == "ADDONS" }
+        assert_equal %w[ADDON_NAME ADDON_ID], parent.co_located_names
+      end
+
       def test_inline_constants_in_hash_are_co_located
         defs = collect(<<~RUBY)
           class Config

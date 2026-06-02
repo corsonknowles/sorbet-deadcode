@@ -411,6 +411,49 @@ module SorbetDeadcode
         assert_includes dead_names, "CATEGORY_A"
       end
 
+      def test_inline_constant_child_kept_alive_when_parent_collection_referenced
+        # The parent collection is referenced (used by value); its inline children must
+        # not be reported dead even though their own names are never referenced — deleting
+        # one would mutate the live collection.
+        analyzer = analyze_source(<<~RUBY)
+          class Config
+            BLOCKED_IDS = [
+              BLOCKED_A = "a",
+              BLOCKED_B = "b",
+            ].freeze
+          end
+
+          Config::BLOCKED_IDS.include?(value)
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "BLOCKED_IDS"
+        refute_includes dead_names, "BLOCKED_A"
+        refute_includes dead_names, "BLOCKED_B"
+      end
+
+      def test_inline_constant_cluster_through_t_let_wrapper
+        # The array is an *argument* to T.let, not a bare literal; the children must still
+        # be recognized as a cluster so a referenced member keeps the rest alive.
+        analyzer = analyze_source(<<~RUBY)
+          class Config
+            ADDONS = T.let(
+              [
+                ADDON_NAME = "name",
+                ADDON_ID = "id",
+              ].freeze, T::Array[String]
+            )
+          end
+
+          Config::ADDON_ID
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "ADDONS"
+        refute_includes dead_names, "ADDON_NAME"
+        refute_includes dead_names, "ADDON_ID"
+      end
+
       def test_module_alive_when_referenced
         analyzer = analyze_source(<<~RUBY)
           module UsedModule

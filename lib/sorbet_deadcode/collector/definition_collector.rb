@@ -103,8 +103,11 @@ module SorbetDeadcode
             collect_nested_constant_writes(assoc.value, names)
           end
         when Prism::CallNode
-          # e.g. `[...].freeze` — descend into the receiver
+          # e.g. `[...].freeze` — descend into the receiver, and into call arguments so
+          # the common Sorbet form `PARENT = T.let([CHILD = ...].freeze, T::Array[...])`
+          # (where the array is an argument, not the receiver) still records its children.
           collect_nested_constant_writes(node.receiver, names) if node.receiver
+          node.arguments&.arguments&.each { |arg| collect_nested_constant_writes(arg, names) }
         end
       end
 

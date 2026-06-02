@@ -24,6 +24,16 @@
   matching the bare `permit` name can only keep a setter alive.
 
 ### Fixed
+- **Inline constants in a collection literal are treated as one cluster** (#88) — a constant
+  assigned a collection that inline-assigns other constants (`PARENT = [CHILD = 'a'].freeze`,
+  including through a `T.let([...], T::Array[...])` wrapper) is a single syntactic unit: Ruby
+  evaluates the inner assignments as a side effect, so deleting any member rewrites the literal.
+  The collector now also descends into call *arguments* (previously only the `.freeze` receiver),
+  so `T.let`-wrapped collections record their children; and the analyzer keeps the whole cluster
+  alive when any member is referenced — protecting both directions (a referenced child keeps the
+  parent collection; a referenced parent keeps its inline children, e.g. SKU id constants inside
+  a referenced `BLOCKED_IDS` array). A cluster with no referenced member is still reported (as a
+  reviewable `inline_constant`), so a truly-unused block can be removed whole.
 - **More AASM event callback keys are recognized** (#89) — `collect_aasm_references` handled
   `after`/`before`/`guard`/`after_commit`/`after_rollback`/`on_transition`/`error`, but a method
   dispatched only through `before_transaction`, `after_transaction`, `success`, `unless`, or
