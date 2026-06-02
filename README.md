@@ -247,6 +247,20 @@ A class matches if its `superclass` matches, it `includes` one of the listed mod
 ends with `name_suffix` (optionally gated by `path_includes`). Keep directives: `keep_methods`
 (owner-scoped names), `keep_prefixes` (e.g. `on_`), or `keep_namespace` (the whole class).
 
+### Introspection & sorting
+
+```bash
+sorbet-deadcode app/ --sort location   # order the report by file:line (or --sort name)
+sorbet-deadcode app/ --extensions rb,rake   # scan additional file extensions (default: rb)
+
+sorbet-deadcode app/ --show-files     # files that would be analyzed
+sorbet-deadcode app/ --show-plugins   # active framework conventions (built-in + configured)
+sorbet-deadcode app/ --show-defs      # every definition collected
+sorbet-deadcode app/ --show-refs      # every reference collected
+```
+
+The `--show-*` flags print what was indexed and exit, mirroring `spoom deadcode`'s introspection.
+
 ### Reporting dynamic dispatch (`--report-dynamic-dispatch`)
 
 By default, a method is conservatively kept alive when its namespace contains a

@@ -1088,6 +1088,42 @@ module SorbetDeadcode
         assert_includes dead, "Unrelated", "unrelated class with no references is still dead"
       end
 
+      def test_default_extensions_scan_only_ruby_files
+        dir = Dir.mktmpdir
+        File.write(File.join(dir, "a.rb"), "class A\n  def dead_rb; end\nend\n")
+        File.write(File.join(dir, "b.rake"), "class B\n  def in_rake; end\nend\n")
+
+        analyzer = DeadCodeAnalyzer.new(paths: [dir])
+        assert(analyzer.source_files.any? { |f| f.end_with?("a.rb") })
+        refute(analyzer.source_files.any? { |f| f.end_with?("b.rake") })
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_custom_extensions_scan_additional_files
+        dir = Dir.mktmpdir
+        File.write(File.join(dir, "a.rb"), "A.run\nclass A\n  def self.run; end\nend\n")
+        File.write(File.join(dir, "tasks.rake"), "class TaskBag\n  def dead_in_rake; end\nend\n")
+
+        # The {rb,rake} multi-extension glob picks up both; the dead .rake method is reported.
+        analyzer = DeadCodeAnalyzer.new(paths: [dir], extensions: %w[rb rake])
+        analyzer.run
+        assert(analyzer.source_files.any? { |f| f.end_with?("tasks.rake") })
+        assert_includes analyzer.dead_definitions.map(&:name), "dead_in_rake"
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
+      def test_extensions_normalizes_leading_dots_and_blanks
+        dir = Dir.mktmpdir
+        File.write(File.join(dir, "t.rake"), "class T\n  def x; end\nend\n")
+
+        analyzer = DeadCodeAnalyzer.new(paths: [dir], extensions: [".rake", "", nil])
+        assert(analyzer.source_files.any? { |f| f.end_with?("t.rake") })
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
       private
 
       def analyze_source(source)

@@ -41,11 +41,18 @@ module SorbetDeadcode
       #     user can review. Use with caution (may include false positives).
       # Precisely-resolved dispatch (literal symbols, interpolation prefixes, and finite
       # symbol-list iteration) always keeps the targeted methods alive regardless of mode.
-      def initialize(paths:, exclude_paths: [], reference_paths: nil, dynamic_dispatch: :exclude, conventions: nil)
+      # File extensions (without the dot) scanned for definitions/references. Defaults to Ruby
+      # source; a project with e.g. .rake tasks or .ru files can widen it via --extensions.
+      DEFAULT_EXTENSIONS = ["rb"].freeze
+
+      def initialize(paths:, exclude_paths: [], reference_paths: nil, dynamic_dispatch: :exclude,
+                     conventions: nil, extensions: nil)
         @paths = Array(paths)
         @exclude_paths = Array(exclude_paths)
         @reference_paths = reference_paths ? Array(reference_paths) : []
         @dynamic_dispatch = dynamic_dispatch
+        @extensions = Array(extensions).map { |ext| ext.to_s.delete_prefix(".") }.reject(&:empty?)
+        @extensions = DEFAULT_EXTENSIONS if @extensions.empty?
         # Base-class-scoped framework conventions consulted by the ReferenceCollector. Defaults to
         # the built-ins; a project can pass a registry extended via config (see Conventions::Registry).
         @conventions = conventions || Conventions::Registry.default
@@ -84,14 +91,25 @@ module SorbetDeadcode
         @definitions.reject { |d| alive?(d, ref_index) }
       end
 
+      # The set of files that will be analyzed for definitions (after exclusions). Exposed so the
+      # CLI's --show-files can report exactly what gets scanned without running the full analysis.
+      def source_files
+        collect_files
+      end
+
       private
+
+      # Glob suffix for the configured extensions: "*.rb" for one, "*.{rb,rake}" for several.
+      def extension_glob
+        @extensions.length == 1 ? "*.#{@extensions.first}" : "*.{#{@extensions.join(',')}}"
+      end
 
       def collect_files
         @paths.flat_map { |path|
           if File.file?(path)
             [path]
           else
-            Dir.glob(File.join(path, "**", "*.rb"))
+            Dir.glob(File.join(path, "**", extension_glob))
           end
         }.reject { |f|
           @exclude_paths.any? { |ep| f.include?(ep) }
@@ -108,7 +126,7 @@ module SorbetDeadcode
           if File.file?(path)
             [path]
           else
-            Dir.glob(File.join(path, "**", "*.rb"))
+            Dir.glob(File.join(path, "**", extension_glob))
           end
         }.reject { |f|
           def_set.include?(File.expand_path(f))
