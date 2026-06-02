@@ -83,6 +83,9 @@ module SorbetDeadcode
         registry
       end
 
+      # @return [Array<Convention>] the registered conventions (built-ins + custom), in order.
+      attr_reader :conventions
+
       def initialize(conventions = [])
         @conventions = conventions.to_a
       end

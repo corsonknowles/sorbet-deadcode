@@ -3,6 +3,16 @@
 ## Unreleased
 
 ### Added
+- **CLI parity with `spoom deadcode`: `--sort`, `--show-*`, `--extensions`** (#118) — rounds out
+  the surface so the tool is a full superset, not just on detection accuracy.
+  - `--sort name|location` orders the report (classified or plain) by full name or `file:line`.
+  - `--show-files` lists the source files that would be analyzed; `--show-plugins` lists the active
+    framework conventions (built-ins + any from `.sorbet-deadcode.yml`); `--show-defs` / `--show-refs`
+    dump every definition / reference collected (introspection — each prints and exits).
+  - `--extensions rb,rake` configures which file extensions are scanned (default `rb`), threaded
+    through to definition and reference collection.
+
+### Added
 - **Configurable framework-convention registry** (#97) — base-class-scoped conventions that keep
   framework-invoked methods alive ("for classes matching X, keep methods/prefixes Y") are now a
   first-class, extensible registry instead of hard-coded `if`s. The previously-inlined detections

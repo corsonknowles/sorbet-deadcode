@@ -50,6 +50,12 @@ options = {
   remove: nil,
   apply: false,
   config: nil,
+  sort: nil,
+  extensions: nil,
+  show_files: false,
+  show_plugins: false,
+  show_defs: false,
+  show_refs: false,
 }
 
 OptionParser.new do |opts|
@@ -207,6 +213,30 @@ OptionParser.new do |opts|
     options[:config] = file
   end
 
+  opts.on("--sort FIELD", "Sort the report by FIELD: 'name' (full name) or 'location' (file:line).") do |field|
+    options[:sort] = field.to_sym
+  end
+
+  opts.on("--extensions LIST", "Comma-separated file extensions to scan (default: rb). E.g. --extensions rb,rake.") do |list|
+    options[:extensions] = list.split(",").map(&:strip).reject(&:empty?)
+  end
+
+  opts.on("--show-files", "List the source files that would be analyzed, then exit.") do
+    options[:show_files] = true
+  end
+
+  opts.on("--show-plugins", "List the active framework conventions (built-in + configured), then exit.") do
+    options[:show_plugins] = true
+  end
+
+  opts.on("--show-defs", "List every definition collected (not just dead ones), then exit.") do
+    options[:show_defs] = true
+  end
+
+  opts.on("--show-refs", "List every reference collected, then exit.") do
+    options[:show_refs] = true
+  end
+
   opts.on("-h", "--help", "Show this help") do
     puts opts
     exit
@@ -221,6 +251,11 @@ end.parse!
 options[:paths] = ARGV.empty? ? ["."] : ARGV
 options[:filter_paths] = options[:paths] if options[:load_index]
 options[:exclude_paths] = [] if options[:include_specs]
+
+if options[:sort] && !%i[name location].include?(options[:sort])
+  $stderr.puts "Error: --sort must be 'name' or 'location' (got '#{options[:sort]}')."
+  exit 1
+end
 
 # Default the project root to the git toplevel so ripgrep verification and the non-Ruby
 # refiners operate repo-wide even when run from inside a pack/subdirectory. Without this,
@@ -240,6 +275,45 @@ if config_path && File.exist?(config_path)
   require "yaml"
   options[:conventions] = SorbetDeadcode::Conventions::Registry.from_config(YAML.safe_load_file(config_path))
   $stderr.puts "[sorbet-deadcode] loaded conventions from #{config_path}"
+end
+
+# Introspection flags (--show-*) report what was indexed and exit, bypassing the dead-code report.
+if options[:show_plugins]
+  registry = options[:conventions] || SorbetDeadcode::Conventions::Registry.default
+  registry.conventions.each { |convention| puts convention.name }
+  exit 0
+end
+
+if options[:show_files] || options[:show_defs] || options[:show_refs]
+  introspect = SorbetDeadcode::Analyzer::DeadCodeAnalyzer.new(
+    paths: options[:paths],
+    exclude_paths: options[:exclude_paths],
+    reference_paths: options[:reference_root],
+    conventions: options[:conventions],
+    extensions: options[:extensions],
+  )
+
+  if options[:show_files]
+    introspect.source_files.sort.each { |file| puts file }
+    exit 0
+  end
+
+  introspect.run # populates definitions + references
+  by_location = options[:sort] == :location
+
+  if options[:show_defs]
+    defs = by_location ? introspect.definitions.sort_by(&:location) : introspect.definitions.sort_by(&:full_name)
+    defs.each { |defn| puts "  #{defn.kind} #{defn.full_name}\n    #{defn.location}" }
+  end
+
+  if options[:show_refs]
+    refs = by_location ? introspect.references.sort_by(&:location) : introspect.references.sort_by(&:name)
+    refs.each do |ref|
+      receiver = ref.receiver_type ? " on #{ref.receiver_type}" : ""
+      puts "  #{ref.kind} #{ref.name}#{receiver}\n    #{ref.location}"
+    end
+  end
+  exit 0
 end
 
 mode_count = [options[:lsp], options[:hybrid], options[:file_table]].count(true)
@@ -301,6 +375,7 @@ else
     reference_paths: options[:reference_root],
     dynamic_dispatch: options[:report_dynamic_dispatch] ? :report : :exclude,
     conventions: options[:conventions],
+    extensions: options[:extensions],
   )
 end
 
@@ -450,7 +525,12 @@ if do_classify
   end
 
   $stderr.puts "Classified #{classified.size} candidates:\n\n"
-  classified.sort_by { |c| [c.suggested_action.to_s, c.definition.full_name] }.each do |c|
+  sorted_classified = case options[:sort]
+  when :location then classified.sort_by { |c| c.definition.location }
+  when :name then classified.sort_by { |c| c.definition.full_name }
+  else classified.sort_by { |c| [c.suggested_action.to_s, c.definition.full_name] }
+  end
+  sorted_classified.each do |c|
     flags = c.flags.empty? ? "" : " flags=#{c.flags.join(',')}"
     puts "  [#{c.suggested_action}] [#{c.confidence}] #{c.definition.kind} #{c.definition.full_name} " \
          "(refs=#{c.external_reference_count}#{flags})"
@@ -470,7 +550,8 @@ ref_index = if options[:show_confidence]
     method_prefixes: Set.new, method_suffixes: Set.new, dynamic_namespaces: Set.new }
 end
 
-results.sort_by(&:full_name).each do |defn|
+sorted_results = options[:sort] == :location ? results.sort_by(&:location) : results.sort_by(&:full_name)
+sorted_results.each do |defn|
   if options[:show_confidence] && ref_index
     confidence = SorbetDeadcode::Analyzer::Confidence.for(defn, ref_index)
     puts "  [#{confidence}] #{defn.kind} #{defn.full_name}"

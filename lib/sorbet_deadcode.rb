@@ -42,13 +42,15 @@ module SorbetDeadcode
   class Error < StandardError; end
 
   class << self
-    def analyze(paths, exclude_paths: [], reference_paths: nil, dynamic_dispatch: :exclude, conventions: nil)
+    def analyze(paths, exclude_paths: [], reference_paths: nil, dynamic_dispatch: :exclude,
+                conventions: nil, extensions: nil)
       analyzer = Analyzer::DeadCodeAnalyzer.new(
         paths: paths,
         exclude_paths: exclude_paths,
         reference_paths: reference_paths,
         dynamic_dispatch: dynamic_dispatch,
         conventions: conventions,
+        extensions: extensions,
       )
       analyzer.run
     end

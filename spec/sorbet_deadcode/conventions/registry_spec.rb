@@ -61,6 +61,14 @@ module SorbetDeadcode
         assert_kind_of Registry, Registry.from_config(nil)
         assert_kind_of Registry, Registry.from_config({})
       end
+
+      def test_conventions_reader_exposes_builtins_for_introspection
+        names = Registry.default.conventions.map(&:name)
+
+        # Used by the CLI's --show-plugins. Built-ins should include the new rubocop_cop convention.
+        assert_includes names, "rubocop_cop"
+        assert_includes names, "active_job"
+      end
     end
   end
 end
