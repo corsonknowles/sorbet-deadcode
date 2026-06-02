@@ -16,6 +16,10 @@ SimpleCov.start do
   # (it can't run in the unit sandbox); its pure row->Index mapping is unit-tested via
   # Spoom::Converter. Integration is exercised manually / behind the optional spoom dep.
   add_filter "lib/sorbet_deadcode/spoom/runner.rb"
+  # Same rationale for the spoom remover: it drives spoom's live Deadcode::Remover against real
+  # files. Its pure location resolution (Spoom::NodeLocator) is unit-tested; end-to-end behavior
+  # is covered by remover_integration_spec behind the optional spoom dep.
+  add_filter "lib/sorbet_deadcode/spoom/remover.rb"
 
   # Line coverage is held at 100%. Branch coverage floor is 96%: the small
   # remainder are defensive parser-edge guards (e.g. `next unless node.is_a?(...)`

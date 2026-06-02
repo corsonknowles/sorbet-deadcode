@@ -3,6 +3,21 @@
 ## Unreleased
 
 ### Added
+- **`--remove TIER`: batch, tier-aware dead-code removal** (#117) — closes the detect → remove
+  loop. Selects a classified action tier (`safe_delete`, `delete_with_spec`, `review`, or `all`)
+  and deletes those definitions by **leveraging spoom's** syntax-aware `Deadcode::Remover` (which
+  removes the node plus its attached comments and Sorbet `sig`s) rather than reimplementing it.
+  What we add over spoom's one-location-at-a-time `deadcode remove`: removing a whole tier in one
+  pass, a **dry run by default** (prints a unified diff; `--apply` writes), and resilient
+  per-target handling (a location spoom can't remove is skipped + reported, never aborting the
+  batch). Pairs with `--spoom` so `--remove safe_delete --spoom` only removes what **both** tools
+  agree is dead. spoom is the same optional dependency as `--spoom` (required lazily). Supports
+  methods/classes/modules/constants today; `attr_reader`/`attr_writer` and inline-constant members
+  are skipped (reported) pending exact symbol-location resolution. The exact node location spoom's
+  remover needs is recovered from our `file:line` candidates by a pure-Prism `Spoom::NodeLocator`
+  (unit-tested; the spoom glue is exercised by a gated integration spec).
+
+### Added
 - **Recently-added code is flagged and routed to review** (#19, completes #62) — definitions
   introduced within a configurable git window (default **30 days**) are the riskiest to
   delete (possible in-flight work), so the Classifier now flags them `:recently_added`,
