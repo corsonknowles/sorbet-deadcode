@@ -24,6 +24,11 @@
   matching the bare `permit` name can only keep a setter alive.
 
 ### Fixed
+- **More AASM event callback keys are recognized** (#89) — `collect_aasm_references` handled
+  `after`/`before`/`guard`/`after_commit`/`after_rollback`/`on_transition`/`error`, but a method
+  dispatched only through `before_transaction`, `after_transaction`, `success`, `unless`, or
+  `ensure` (e.g. `event :go, before_transaction: :set_remove_date`) was reported dead. These keys
+  take a symbol or array of symbols like the others, so they now emit method references too.
 - **Classifier no longer mislabels referenced namespaced classes/constants as `safe_delete`** —
   `rg --with-filename -o` emits `path:matched`, and the matched token for a compactly-defined
   class/module is the fully-qualified constant (`A::B::C`), which itself contains `::`. The
