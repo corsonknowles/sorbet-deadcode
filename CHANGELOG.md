@@ -13,6 +13,15 @@
   (`30d` / `2w` / `1m`); `--max-age 0` disables.
 
 ### Fixed
+- **Classifier no longer mislabels referenced namespaced classes/constants as `safe_delete`** —
+  `rg --with-filename -o` emits `path:matched`, and the matched token for a compactly-defined
+  class/module is the fully-qualified constant (`A::B::C`), which itself contains `::`. The
+  classifier split that line on the *last* colon, shearing the token (`A::B::C` → `C`) and
+  re-keying references under the wrong short name, so every cross-file reference to a namespaced
+  constant was lost and the (live) definition was reported `refs=0` → `safe_delete`. It now
+  splits on the first colon (file paths don't contain `:`; the trailing token does). This is a
+  correctness/safety fix: the default classified output could previously recommend deleting live
+  cross-pack classes. The verifier (`--no-filename`) was unaffected.
 - **YAML class-registry configs are now recognized** (#76) — `YamlScanner` only matched
   `key: Module::Class.method` values, so classes listed in registry configs (loaded via
   `constantize`) were reported dead, e.g. `- Demo::Scenarios::WithWidget` array items or

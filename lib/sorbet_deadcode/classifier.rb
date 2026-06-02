@@ -142,12 +142,15 @@ module SorbetDeadcode
       result
     end
 
-    # rg --with-filename -o emits `path:matched`. Candidate names are simple
-    # identifiers (optionally ending in ?/!/=) and never contain ':', so the last
-    # colon reliably separates path from token.
+    # rg --with-filename -o emits `path:matched`. The matched token is a candidate
+    # name, which for a compactly-defined class/module is the fully-qualified constant
+    # (e.g. "A::B::C") and therefore *does* contain ':'. File paths don't, so we split
+    # on the FIRST colon — splitting on the last would shear the token at its "::" and
+    # re-key references under the wrong (short) name, hiding every cross-file reference
+    # to a namespaced constant and mislabeling live code as safe_delete.
     def split_match_line(line)
       stripped = line.rstrip
-      idx = stripped.rindex(":")
+      idx = stripped.index(":")
       return [nil, nil] unless idx
 
       [stripped[0...idx], stripped[(idx + 1)..]]
