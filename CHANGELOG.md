@@ -24,6 +24,12 @@
   matching the bare `permit` name can only keep a setter alive.
 
 ### Fixed
+- **Validation/callback `if:`/`unless:` conditional methods are recognized** (#94) — a method used
+  only as a `validate`/`validates`/callback guard (`validate :x, if: :ready?`, `validates :c,
+  presence: true, unless: :skip?`) was reported dead: `collect_validator_references` only scanned
+  positional symbols, and `validates` wasn't in the recognized DSL at all. It now also collects the
+  `if:`/`unless:` option values (symbol or array) as method references, and recognizes `validates`
+  (whose positional args are attribute names, not methods, so those are not emitted).
 - **GraphQL field resolver methods are no longer reported dead** (#92) — in a code-first
   graphql-ruby schema a `field :foo` is resolved by calling a same-named method `foo` on the
   type when one is defined, but `collect_graphql_references` only emitted references for a
