@@ -19,7 +19,12 @@ module SorbetDeadcode
         new create create! build build_stubbed build_stubbed_list
         update update! update_columns update_attributes update_attributes!
         assign_attributes attributes= with
+        insert insert! upsert
       ].to_set.freeze
+
+      # Bulk-write methods that take an ARRAY of attribute hashes (`Model.insert_all([{a: 1}])`);
+      # each hash key sets the `key=` setter, same as single-record mass assignment.
+      ARRAY_MASS_ASSIGNMENT_METHODS = %w[insert_all insert_all! upsert_all].to_set.freeze
 
       # Rails `delegate :foo, :bar, to: :target` creates forwarding methods.
       # The delegated names are referenced via define_method at class load time.
@@ -212,6 +217,7 @@ module SorbetDeadcode
         # Keyword mass-assignment (`Model.new(foo: x)`, `build(:m, foo: x)`, etc.) invokes
         # the `foo=` setter; emit those writer references so set-only attributes aren't dead.
         collect_mass_assignment_references(node, location) if MASS_ASSIGNMENT_METHODS.include?(name)
+        collect_array_mass_assignment_references(node, location) if ARRAY_MASS_ASSIGNMENT_METHODS.include?(name)
 
         # Strong-params `params.permit(:foo, bar: [])` whitelists attributes that are then
         # mass-assigned (`record.assign_attributes(permitted)`); the attribute names appear
@@ -702,16 +708,33 @@ module SorbetDeadcode
         return unless node.arguments
 
         node.arguments.arguments.each do |arg|
-          next unless arg.is_a?(Prism::KeywordHashNode) || arg.is_a?(Prism::HashNode)
+          emit_hash_key_writers(arg, location) if arg.is_a?(Prism::KeywordHashNode) || arg.is_a?(Prism::HashNode)
+        end
+      end
 
-          arg.elements.each do |assoc|
-            next unless assoc.is_a?(Prism::AssocNode)
+      # Bulk-write methods take an array of attribute hashes: `Model.insert_all([{a: 1}, {b: 2}])`.
+      # Each hash key sets the corresponding `key=` writer.
+      def collect_array_mass_assignment_references(node, location)
+        return unless node.arguments
 
-            key = assoc.key
-            next unless key.is_a?(Prism::SymbolNode)
+        node.arguments.arguments.each do |arg|
+          next unless arg.is_a?(Prism::ArrayNode)
 
-            @references << Reference.new(name: "#{key.unescaped}=", location: location, kind: :method)
+          arg.elements.each do |el|
+            emit_hash_key_writers(el, location) if el.is_a?(Prism::HashNode)
           end
+        end
+      end
+
+      # Emit a `key=` writer reference for each symbol key of a hash literal.
+      def emit_hash_key_writers(hash_node, location)
+        hash_node.elements.each do |assoc|
+          next unless assoc.is_a?(Prism::AssocNode)
+
+          key = assoc.key
+          next unless key.is_a?(Prism::SymbolNode)
+
+          @references << Reference.new(name: "#{key.unescaped}=", location: location, kind: :method)
         end
       end
 

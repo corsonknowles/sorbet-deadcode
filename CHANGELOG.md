@@ -24,6 +24,10 @@
   matching the bare `permit` name can only keep a setter alive.
 
 ### Fixed
+- **More mass-assignment entry points recognized** (#104) — `insert`/`insert!`/`upsert` now emit
+  `key=` writer references like `create`/`update`, and the bulk array forms
+  `insert_all`/`insert_all!`/`upsert_all` emit writers for each key in their array of attribute
+  hashes. Prevents write-only attributes set only through bulk writes from being reported dead.
 - **Controller `rescue_from`/`helper_method` targets are recognized** (#102) — `rescue_from Err,
   with: :handler` dispatches to `handler` on error, and `helper_method :foo` exposes `foo` to
   views; both target methods had no Ruby call site and were reported dead. They now emit method
