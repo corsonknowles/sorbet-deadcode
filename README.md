@@ -245,7 +245,11 @@ conventions:
 
 A class matches if its `superclass` matches, it `includes` one of the listed modules, or its name
 ends with `name_suffix` (optionally gated by `path_includes`). Keep directives: `keep_methods`
-(owner-scoped names), `keep_prefixes` (e.g. `on_`), or `keep_namespace` (the whole class).
+(owner-scoped names), `keep_prefixes` (e.g. `on_`), `keep_constants` (e.g. a cop's `MSG`), or
+`keep_namespace` (the whole class).
+
+The complete list of built-in framework/DSL conventions — and how it maps to spoom's plugins — is
+documented in [`docs/dsl-parity.md`](docs/dsl-parity.md).
 
 ### Introspection & sorting
 

@@ -1088,6 +1088,43 @@ module SorbetDeadcode
         assert_includes dead, "Unrelated", "unrelated class with no references is still dead"
       end
 
+      def test_ruby_lifecycle_hooks_are_always_alive
+        analyzer = analyze_source(<<~RUBY)
+          class Widget
+            def ==(other); end
+
+            def inherited(subclass); end
+
+            def included(base); end
+
+            def truly_dead; end
+          end
+        RUBY
+
+        dead = analyzer.dead_definitions.map(&:name)
+        refute_includes dead, "==",        "Ruby calls == implicitly"
+        refute_includes dead, "inherited", "Ruby invokes the inherited hook"
+        refute_includes dead, "included",  "Ruby invokes the included hook"
+        assert_includes dead, "truly_dead"
+      end
+
+      def test_rails_convention_methods_are_always_alive
+        analyzer = analyze_source(<<~RUBY)
+          class Order
+            def to_param; end
+
+            def persisted?; end
+
+            def unused_helper; end
+          end
+        RUBY
+
+        dead = analyzer.dead_definitions.map(&:name)
+        refute_includes dead, "to_param",   "Rails calls to_param for URL generation"
+        refute_includes dead, "persisted?", "ActiveModel calls persisted?"
+        assert_includes dead, "unused_helper"
+      end
+
       def test_default_extensions_scan_only_ruby_files
         dir = Dir.mktmpdir
         File.write(File.join(dir, "a.rb"), "class A\n  def dead_rb; end\nend\n")

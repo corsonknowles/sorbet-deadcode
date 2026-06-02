@@ -913,6 +913,109 @@ module SorbetDeadcode
         assert refs.any? { |r| r.kind == :method && r.name == "consume" }
       end
 
+      def test_validates_bang_and_each_treat_positional_as_attributes
+        refs = collect(<<~RUBY)
+          class User
+            validates! :email, presence: true, if: :ready?
+            validates_each :name, strong_password: true
+          end
+        RUBY
+
+        methods = refs.select { |r| r.kind == :method }.map(&:name)
+        constants = refs.select { |r| r.kind == :constant }.map(&:name)
+        assert_includes methods, "ready?", "if: conditional is a method reference"
+        refute_includes methods, "email", "positional arg is an attribute, not a method"
+        assert_includes constants, "PresenceValidator"
+        assert_includes constants, "StrongPasswordValidator"
+      end
+
+      def test_after_touch_callback_symbol_is_referenced
+        refs = collect(<<~RUBY)
+          class Model
+            after_touch :refresh_cache
+          end
+        RUBY
+
+        assert_includes refs.select { |r| r.kind == :method }.map(&:name), "refresh_cache"
+      end
+
+      def test_skip_after_action_callback_symbol_is_referenced
+        refs = collect(<<~RUBY)
+          class PostsController
+            skip_after_action :verify_authorized
+          end
+        RUBY
+
+        assert_includes refs.select { |r| r.kind == :method }.map(&:name), "verify_authorized"
+      end
+
+      def test_setup_callback_symbol_is_referenced
+        refs = collect(<<~RUBY)
+          class MyTest
+            setup :prepare_fixtures
+          end
+        RUBY
+
+        assert_includes refs.select { |r| r.kind == :method }.map(&:name), "prepare_fixtures"
+      end
+
+      def test_alias_method_references_the_original
+        refs = collect(<<~RUBY)
+          class Foo
+            alias_method :new_name, :old_name
+          end
+        RUBY
+
+        assert_includes refs.select { |r| r.kind == :method }.map(&:name), "old_name"
+      end
+
+      def test_method_handle_references_the_named_method
+        refs = collect("handler = method(:process_event)")
+
+        assert_includes refs.select { |r| r.kind == :method }.map(&:name), "process_event"
+      end
+
+      def test_const_get_with_symbol_references_constant
+        refs = collect("klass = Object.const_get(:SecretService)")
+
+        assert_includes refs.select { |r| r.kind == :constant }.map(&:name), "SecretService"
+      end
+
+      def test_const_defined_with_string_path_references_each_segment
+        refs = collect('Object.const_defined?("Billing::Invoice")')
+
+        constants = refs.select { |r| r.kind == :constant }.map(&:name)
+        assert_includes constants, "Billing"
+        assert_includes constants, "Invoice"
+      end
+
+      def test_reflection_with_non_literal_args_emits_no_extra_reference
+        # Dynamic (non-symbol/string) arguments can't be resolved to a name, so we add nothing
+        # beyond the call itself — exercises the negative branches of the reflection handlers.
+        refs = collect(<<~RUBY)
+          name = :foo
+          method(name)
+          klass.const_get(name)
+          alias_method :a, (cond ? :x : :y)
+        RUBY
+
+        names = refs.map(&:name)
+        refute_includes names, "name", "the variable name is not referenced as a method/constant"
+      end
+
+      def test_rubocop_cop_keeps_msg_and_restrict_constants_owner_scoped
+        refs = collect(<<~RUBY)
+          class NoFooCop < RuboCop::Cop::Base
+            MSG = "no foo"
+            RESTRICT_ON_SEND = [:foo].freeze
+          end
+        RUBY
+
+        constants = refs.select { |r| r.kind == :constant }.map(&:name)
+        assert_includes constants, "NoFooCop::MSG"
+        assert_includes constants, "NoFooCop::RESTRICT_ON_SEND"
+      end
+
       def test_non_visitor_subclass_does_not_emit_visit_prefix
         refs = collect(<<~RUBY)
           class Transformer < Prism::Mutation

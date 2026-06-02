@@ -54,11 +54,14 @@ module SorbetDeadcode
       # `assert_predicate obj, :foo?` / `refute_predicate obj, :foo?` invoke `foo?`.
       ASSERT_PREDICATE_METHODS = %w[assert_predicate refute_predicate].to_set.freeze
 
+      # Reflection methods that look up a constant by symbol/string name (Module#const_get etc.).
+      CONSTANT_REFLECTION_METHODS = %w[const_get const_defined? const_source_location].to_set.freeze
+
       # ActiveModel/Rails DSL methods that take symbol names of methods to call.
       # `validate :method_name` dispatches via send(method_name) during validation.
       # `before_validation/after_validation :method` similarly dispatches.
       VALIDATOR_DSL_METHODS = %w[
-        validate validates
+        validate validates validates! validates_each
         before_validation after_validation
         before_create after_create around_create
         before_update after_update around_update
@@ -66,14 +69,21 @@ module SorbetDeadcode
         before_destroy after_destroy around_destroy
         after_commit after_rollback before_commit
         after_create_commit after_update_commit after_destroy_commit after_save_commit
-        after_initialize after_find
+        after_initialize after_find after_touch
         before_action after_action around_action
-        prepend_before_action append_before_action
-        skip_before_action
+        prepend_before_action append_before_action skip_before_action
+        prepend_after_action append_after_action skip_after_action
+        prepend_around_action append_around_action skip_around_action
         before_enqueue after_enqueue around_enqueue
         before_perform after_perform around_perform
         helper_method
+        setup teardown
       ].to_set.freeze
+
+      # `validates`-family DSL methods whose positional arguments are ATTRIBUTE names (not method
+      # names): `validates :email, presence: true`. Their option keys map to validator constants
+      # and their if:/unless: values are method names (handled in collect_validator_references).
+      VALIDATES_METHODS = %w[validates validates! validates_each].to_set.freeze
 
       # Rails validation/callback conditional options whose value is a method name (or array of
       # them) invoked at validation/callback time: `validate :x, if: :ready?`, `unless: :skip?`.
@@ -190,6 +200,15 @@ module SorbetDeadcode
         # only as permit keys, so emit `foo=`/`bar=` writer references to keep those setters
         # alive. Conservative: matching the bare `permit` name can only keep a setter alive.
         collect_permit_references(node, location) if name == "permit"
+
+        # Reflection that names a method/constant by symbol or string without a literal call site:
+        # `alias_method :new, :old` (old kept), `method(:foo)` (foo kept), and dynamic constant
+        # access `const_get(:Foo)` / `const_defined?("A::B")` (the constant kept).
+        if node.arguments
+          collect_alias_method_reference(node, location) if name == "alias_method"
+          collect_method_handle_reference(node, location) if name == "method"
+          collect_constant_reflection_references(node, location) if CONSTANT_REFLECTION_METHODS.include?(name)
+        end
 
         # Resolve dispatch over a finite symbol list, e.g. `[:a, :b].each { |m| send(m) }`
         # or `METHODS.each { |m| send(m) }`. Bind the block param to the resolved symbol
@@ -645,9 +664,9 @@ module SorbetDeadcode
       def collect_validator_references(node, location)
         # `validates :col, ...` — positional args are attribute names, not methods. For
         # `validate`/callbacks the positional symbols are method names (the existing behavior).
-        positional_are_methods = node.name.to_s != "validates"
+        validates = VALIDATES_METHODS.include?(node.name.to_s)
+        positional_are_methods = !validates
 
-        validates = node.name.to_s == "validates"
         node.arguments.arguments.each do |arg|
           case arg
           when Prism::SymbolNode
@@ -696,6 +715,36 @@ module SorbetDeadcode
         @references << Reference.new(name: predicate.unescaped, location: location, kind: :method)
       end
 
+      # `alias_method :new_name, :old_name` defines new_name as a copy of old_name, so old_name is
+      # referenced (and stays alive) even if the original name is never called directly afterward.
+      def collect_alias_method_reference(node, location)
+        target = node.arguments.arguments.last
+        return unless target.is_a?(Prism::SymbolNode) || target.is_a?(Prism::StringNode)
+
+        @references << Reference.new(name: target.unescaped, location: location, kind: :method)
+      end
+
+      # `method(:foo)` / `obj.method(:foo)` builds a Method object for `foo`, invoking it later with
+      # no literal `foo` call site. Emit the method reference so it isn't reported dead.
+      def collect_method_handle_reference(node, location)
+        arg = node.arguments.arguments.first
+        @references << Reference.new(name: arg.unescaped, location: location, kind: :method) if arg.is_a?(Prism::SymbolNode)
+      end
+
+      # `const_get(:Foo)` / `const_defined?("A::B")` / `const_source_location(:Foo)` access a
+      # constant by name. Reference it (each `::` segment for a string path) so it isn't dead.
+      def collect_constant_reflection_references(node, location)
+        arg = node.arguments.arguments.first
+        case arg
+        when Prism::SymbolNode
+          @references << Reference.new(name: arg.unescaped, location: location, kind: :constant)
+        when Prism::StringNode
+          arg.unescaped.split("::").reject(&:empty?).each do |segment|
+            @references << Reference.new(name: segment, location: location, kind: :constant)
+          end
+        end
+      end
+
       # Consult the convention registry for this class and emit the kept-alive references each
       # matching convention prescribes. keep_methods are owner-typed (scoped to this class) so a
       # same-named method elsewhere is still analyzed; keep_prefixes are method-prefix references
@@ -714,6 +763,12 @@ module SorbetDeadcode
           end
           convention.keep_prefixes.each do |prefix|
             @references << Reference.new(name: prefix, location: location, kind: :method_prefix)
+          end
+          convention.keep_constants.each do |const|
+            # Owner-scoped: reference the fully-qualified constant so only this class's `MSG`
+            # (etc.) is kept alive, not a same-named constant elsewhere. current_namespace is always
+            # set here — emit_convention_references runs from visit_class_node, inside the class.
+            @references << Reference.new(name: "#{current_namespace}::#{const}", location: location, kind: :constant)
           end
           @references << Reference.new(name: current_namespace, location: location, kind: :dynamic_namespace) if convention.keep_namespace?
         end

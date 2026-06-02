@@ -12,6 +12,12 @@ module SorbetDeadcode
         use_relative_model_naming?
         to_s
         inspect
+        ==
+        extended
+        included
+        inherited
+        method_added
+        prepended
       ]).freeze
 
       # Framework convention hooks: methods a gem/framework invokes *by name* (reflection /
@@ -25,6 +31,9 @@ module SorbetDeadcode
         sidekiq_unique_context
         sidekiq_retries_exhausted
         sidekiq_retry_in
+        persisted?
+        to_param
+        table_name_prefix
       ]).freeze
 
       attr_reader :definitions, :references, :type_resolver

@@ -48,10 +48,12 @@ module SorbetDeadcode
       end
 
       def test_keep_attributes_are_normalized_to_strings
-        convention = Convention.new(name: "c", keep_methods: [:perform], keep_prefixes: [:on_], keep_namespace: true)
+        convention = Convention.new(name: "c", keep_methods: [:perform], keep_prefixes: [:on_],
+                                    keep_constants: [:MSG], keep_namespace: true)
 
         assert_equal ["perform"], convention.keep_methods
         assert_equal ["on_"], convention.keep_prefixes
+        assert_equal ["MSG"], convention.keep_constants
         assert convention.keep_namespace?
       end
     end
