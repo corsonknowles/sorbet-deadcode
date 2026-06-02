@@ -92,6 +92,10 @@ module SorbetDeadcode
       # them) invoked at validation/callback time: `validate :x, if: :ready?`, `unless: :skip?`.
       VALIDATOR_CONDITIONAL_KEYS = %w[if unless].to_set.freeze
 
+      # `validates` options that are NOT validators — every other key maps to a `<Key>Validator`
+      # class. (`if`/`unless` are handled separately as conditional method references.)
+      VALIDATES_STANDARD_OPTIONS = %w[on allow_nil allow_blank message strict].to_set.freeze
+
       def initialize(file_path, type_resolver: nil)
         super()
         @file_path = file_path
@@ -251,6 +255,12 @@ module SorbetDeadcode
           return
         elsif GRAPHQL_DSL_METHODS.include?(name) && node.receiver.nil? && node.arguments
           collect_graphql_references(node, location, method_name: name)
+          super
+          return
+        elsif %w[attribute attributes].include?(name) && node.receiver.nil? && node.arguments
+          # `attribute :foo` defines foo/foo= dynamically; emit refs so an overriding
+          # `def foo` / `def foo=` on the model isn't reported dead.
+          collect_attribute_references(node, location)
           super
           return
         elsif name == "rescue_from" && node.receiver.nil? && node.arguments
@@ -675,6 +685,7 @@ module SorbetDeadcode
         # `validate`/callbacks the positional symbols are method names (the existing behavior).
         positional_are_methods = node.name.to_s != "validates"
 
+        validates = node.name.to_s == "validates"
         node.arguments.arguments.each do |arg|
           case arg
           when Prism::SymbolNode
@@ -684,12 +695,34 @@ module SorbetDeadcode
               next unless assoc.is_a?(Prism::AssocNode)
 
               key = assoc.key.slice.delete_suffix(":")
-              next unless VALIDATOR_CONDITIONAL_KEYS.include?(key)
-
-              collect_symbol_or_array(assoc.value, location)
+              if VALIDATOR_CONDITIONAL_KEYS.include?(key)
+                collect_symbol_or_array(assoc.value, location)
+              elsif validates && !VALIDATES_STANDARD_OPTIONS.include?(key)
+                # `validates :x, strong_password: true` resolves to a `StrongPasswordValidator`
+                # class instantiated by ActiveModel; keep that validator constant alive.
+                @references << Reference.new(name: "#{camelize(key)}Validator", location: location, kind: :constant)
+              end
             end
           end
         end
+      end
+
+      # `attribute :foo` / `attributes :a, :b` — keep an overriding reader/writer alive.
+      def collect_attribute_references(node, location)
+        node.arguments.arguments.each do |arg|
+          next unless arg.is_a?(Prism::SymbolNode)
+
+          @references << Reference.new(name: arg.unescaped, location: location, kind: :method)
+          @references << Reference.new(name: "#{arg.unescaped}=", location: location, kind: :method)
+          # `attribute :foo, :type` — only the first symbol is the attribute name; the rest are
+          # the type/options, so stop after the first.
+          break unless node.name.to_s == "attributes"
+        end
+      end
+
+      # snake_case => CamelCase (e.g. "strong_password" => "StrongPassword").
+      def camelize(str)
+        str.split("_").map(&:capitalize).join
       end
 
       # Emit read + write references for an operator-assignment to a method receiver

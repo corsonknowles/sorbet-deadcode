@@ -532,6 +532,57 @@ module SorbetDeadcode
         assert_includes names, "enabled?"
       end
 
+      def test_attribute_emits_reader_and_writer_for_name_only
+        refs = collect(<<~RUBY)
+          class Model
+            attribute :display_name, :string
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "display_name"
+        assert_includes names, "display_name="
+        refute_includes names, "string"  # the type arg is not an attribute name
+      end
+
+      def test_attributes_plural_emits_all_names
+        refs = collect(<<~RUBY)
+          class Model
+            attributes :first, :last
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "first"
+        assert_includes names, "last="
+      end
+
+      def test_validates_custom_validator_option_emits_constant
+        refs = collect(<<~RUBY)
+          class Model
+            validates :password, strong_password: true, on: :create, presence: true
+          end
+        RUBY
+
+        consts = refs.select { |r| r.kind == :constant }.map(&:name)
+        assert_includes consts, "StrongPasswordValidator"
+        assert_includes consts, "PresenceValidator"
+        refute_includes consts, "OnValidator"  # `on:` is a standard option, not a validator
+      end
+
+      def test_validate_options_are_not_treated_as_validators
+        refs = collect(<<~RUBY)
+          class Model
+            validate :check_thing, on: :create, **opts
+          end
+        RUBY
+
+        names = refs.map(&:name)
+        assert_includes names, "check_thing"          # positional method
+        refute_includes names, "CreateValidator"      # `validate` (not `validates`) has no validator options
+        refute_includes names, "OnValidator"
+      end
+
       def test_validate_conditional_options_with_splat_do_not_crash
         refs = collect(<<~RUBY)
           class Model
