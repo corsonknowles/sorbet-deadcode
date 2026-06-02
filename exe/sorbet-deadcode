@@ -164,8 +164,8 @@ OptionParser.new do |opts|
   opts.on("--remove TIER",
     "Remove dead code in the given action TIER (safe_delete, delete_with_spec,",
     "review, or all) by leveraging spoom's syntax-aware remover (requires the spoom",
-    "gem). Dry run by default — prints a unified diff; pass --apply to write. Pair with",
-    "--spoom to only remove candidates both tools agree are dead.") do |tier|
+    "gem). Dry run by default — prints a unified diff; pass --apply to write. Combine",
+    "with the --spoom flag to only remove candidates both tools agree are dead.") do |tier|
     options[:remove] = tier.to_sym
   end
 
