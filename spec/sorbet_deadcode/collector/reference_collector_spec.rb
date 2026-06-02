@@ -595,6 +595,37 @@ module SorbetDeadcode
         assert_includes names, "guard?"
       end
 
+      def test_test_class_detected_by_name_suffix_emits_test_prefix
+        refs = collect(<<~RUBY)
+          class WidgetTest
+            def test_run; end
+          end
+        RUBY
+
+        assert refs.any? { |r| r.kind == :method_prefix && r.name == "test_" }
+      end
+
+      def test_non_test_class_does_not_emit_test_prefix
+        refs = collect(<<~RUBY)
+          class WidgetService
+            def run; end
+          end
+        RUBY
+
+        refute refs.any? { |r| r.kind == :method_prefix && r.name == "test_" }
+      end
+
+      def test_assert_predicate_edge_args_emit_no_predicate
+        # bare call (no args) and a non-symbol predicate arg: no predicate method emitted, no crash
+        refs = collect(<<~RUBY)
+          assert_predicate
+          assert_predicate("obj", "not_a_symbol")
+        RUBY
+
+        method_names = refs.select { |r| r.kind == :method }.map(&:name).uniq
+        assert_equal ["assert_predicate"], method_names
+      end
+
       def test_helper_method_emits_method_references
         refs = collect(<<~RUBY)
           class UsersController < ApplicationController

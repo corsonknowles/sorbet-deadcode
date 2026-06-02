@@ -24,6 +24,11 @@
   matching the bare `permit` name can only keep a setter alive.
 
 ### Fixed
+- **Minitest test methods and predicate assertions recognized** (#106) — in a Minitest /
+  `ActiveSupport::TestCase` test class (by superclass or a `*Test` name), `test_*` methods and the
+  setup/teardown/`*_all`/around lifecycle hooks are kept alive, and `assert_predicate obj, :foo?` /
+  `refute_predicate` keep the `foo?` predicate alive. (Mostly relevant to runs that include test
+  dirs, which are excluded by default.)
 - **ActiveModel `attribute` accessors and custom validators recognized** (#105) — `attribute :foo`
   (and `attributes :a, :b`) now keep an overriding `def foo`/`def foo=` alive, and a `validates`
   option key that isn't a standard option (`on`/`allow_nil`/`allow_blank`/`message`/`strict`/`if`/

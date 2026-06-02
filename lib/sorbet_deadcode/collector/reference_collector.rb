@@ -67,6 +67,18 @@ module SorbetDeadcode
       # Superclass names that mark an ActiveJob/Sidekiq job class.
       JOB_SUPERCLASS = /\A(ApplicationJob|ApplicationWorker)\z|ActiveJob::Base/
 
+      # Minitest lifecycle hooks invoked by the framework on a test class.
+      MINITEST_HOOK_METHODS = %w[
+        setup teardown before_setup after_setup before_teardown after_teardown
+        before_all after_all around around_all
+      ].freeze
+
+      # `assert_predicate obj, :foo?` / `refute_predicate obj, :foo?` invoke `foo?`.
+      ASSERT_PREDICATE_METHODS = %w[assert_predicate refute_predicate].to_set.freeze
+
+      # Superclasses that mark a Minitest/ActiveSupport test class.
+      TEST_SUPERCLASS = /(Minitest::(Test|Spec)|ActiveSupport::TestCase|Test::Unit::TestCase)\z/
+
       # ActiveModel/Rails DSL methods that take symbol names of methods to call.
       # `validate :method_name` dispatches via send(method_name) during validation.
       # `before_validation/after_validation :method` similarly dispatches.
@@ -164,6 +176,15 @@ module SorbetDeadcode
           end
         end
 
+        if minitest_test_class?(node)
+          # Minitest runs `test_*` methods and setup/teardown hooks by reflection. Keep the
+          # test_* family alive via a prefix, and the lifecycle hooks owner-typed to this class.
+          @references << Reference.new(name: "test_", location: location, kind: :method_prefix)
+          MINITEST_HOOK_METHODS.each do |hook|
+            @references << Reference.new(name: hook, location: location, kind: :method, receiver_type: current_namespace)
+          end
+        end
+
         super
         @namespace_stack.pop
       end
@@ -222,6 +243,9 @@ module SorbetDeadcode
         # the `foo=` setter; emit those writer references so set-only attributes aren't dead.
         collect_mass_assignment_references(node, location) if MASS_ASSIGNMENT_METHODS.include?(name)
         collect_array_mass_assignment_references(node, location) if ARRAY_MASS_ASSIGNMENT_METHODS.include?(name)
+
+        # `assert_predicate obj, :ready?` invokes the `ready?` predicate (Minitest).
+        collect_assert_predicate_reference(node, location) if ASSERT_PREDICATE_METHODS.include?(name) && node.arguments
 
         # Strong-params `params.permit(:foo, bar: [])` whitelists attributes that are then
         # mass-assigned (`record.assign_attributes(permitted)`); the attribute names appear
@@ -723,6 +747,22 @@ module SorbetDeadcode
       # snake_case => CamelCase (e.g. "strong_password" => "StrongPassword").
       def camelize(str)
         str.split("_").map(&:capitalize).join
+      end
+
+      # `assert_predicate obj, :foo?` / `refute_predicate obj, :foo?` — the 2nd arg is the
+      # predicate method invoked on the object.
+      def collect_assert_predicate_reference(node, location)
+        predicate = node.arguments.arguments[1]
+        return unless predicate.is_a?(Prism::SymbolNode)
+
+        @references << Reference.new(name: predicate.unescaped, location: location, kind: :method)
+      end
+
+      # A Minitest / ActiveSupport::TestCase test class — by superclass or a `*Test` name.
+      def minitest_test_class?(class_node)
+        return true if class_node.superclass&.slice&.match?(TEST_SUPERCLASS)
+
+        node_class_name(class_node).end_with?("Test")
       end
 
       # Emit read + write references for an operator-assignment to a method receiver
