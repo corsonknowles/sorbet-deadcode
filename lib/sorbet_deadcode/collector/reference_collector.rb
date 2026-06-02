@@ -556,7 +556,15 @@ module SorbetDeadcode
         first = args.first
         arg_name = first.is_a?(Prism::SymbolNode) ? first.unescaped : nil
 
-        # argument / field: look for `prepare:`, `method:`, and `loads:` keyword options.
+        # `field :foo` is resolved by calling a same-named method `foo` on the type when one is
+        # defined (graphql-ruby's default resolver); emit that so field resolver methods aren't
+        # reported dead. Arguments are passed as kwargs (no same-named method), so this is
+        # field-only. An explicit `method:`/`resolver_method:` override is handled below too.
+        if method_name == "field" && arg_name
+          @references << Reference.new(name: arg_name, location: location, kind: :method)
+        end
+
+        # argument / field: look for `prepare:`, `method:`, `resolver_method:` and `loads:` options.
         args.each do |arg|
           next unless arg.is_a?(Prism::KeywordHashNode)
 
@@ -567,7 +575,7 @@ module SorbetDeadcode
             next unless key.is_a?(Prism::SymbolNode)
 
             case key.unescaped
-            when "prepare", "method"
+            when "prepare", "method", "resolver_method"
               val = assoc.value
               @references << Reference.new(name: val.unescaped, location: location, kind: :method) if val.is_a?(Prism::SymbolNode)
             when "loads"
