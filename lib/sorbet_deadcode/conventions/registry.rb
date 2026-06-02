@@ -62,6 +62,14 @@ module SorbetDeadcode
 
           # Rails/Thor generators & commands: every public method is an ordered step run by reflection.
           Convention.new(name: "generator", superclass: /Generators::(Named)?Base\z|\AThor(::Group)?\z/, keep_namespace: true),
+
+          # ActionMailer::Preview classes: the Rails mail preview UI invokes their action methods via
+          # routes, not explicit calls. Two conventions reproduce the original heuristic (kept
+          # deliberately conservative so an unrelated `*Preview` service isn't silently kept alive):
+          #   1. a `*Preview` superclass (e.g. ActionMailer::Preview) or a `*MailerPreview` class name;
+          #   2. a `*Preview` class name living in a mailer_preview(s) path.
+          Convention.new(name: "mailer_preview", superclass: /Preview/, name_suffix: "MailerPreview", keep_namespace: true),
+          Convention.new(name: "mailer_preview_path", name_suffix: "Preview", path_includes: "mailer_preview", keep_namespace: true),
         ].freeze
       end
 

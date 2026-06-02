@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Changed
+- **`mailer_preview` detection moved into the convention registry** (#97 follow-up) — the last
+  bespoke base-class detection (`ActionMailer::Preview` classes) is now expressed as two built-in
+  conventions instead of a hard-coded check, so *every* base-class-scoped detection flows through
+  one mechanism. Behavior is unchanged (a `*Preview` superclass or `*MailerPreview` name, or a
+  `*Preview` name in a mailer_preview path, keeps the whole class).
+
 ### Added
 - **Rails/Ruby DSL parity with spoom + a documented support matrix** (#98) — cataloged spoom's
   dead-code plugins, diffed against ours, and closed the gaps so the supported convention surface

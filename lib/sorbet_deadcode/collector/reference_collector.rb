@@ -120,18 +120,9 @@ module SorbetDeadcode
         location = format_location(node.location)
 
         # Base-class-scoped framework conventions (visitor / graphql / job / rubocop cop / minitest
-        # / migration / generator + any project-registered ones): keep framework-invoked methods
-        # alive, scoped to the matching class. See Conventions::Registry.
+        # / migration / generator / mailer_preview + any project-registered ones): keep
+        # framework-invoked methods alive, scoped to the matching class. See Conventions::Registry.
         emit_convention_references(node, location)
-
-        if mailer_preview_class?(node)
-          # ActionMailer::Preview subclasses: preview methods are invoked by the
-          # Rails mail preview UI via routing, not by explicit Ruby calls.
-          # Mark the whole namespace as dynamically dispatched so all its methods
-          # (the preview actions) are kept alive. Use the fully-qualified namespace so
-          # it matches the owner_name recorded for nested definitions.
-          @references << Reference.new(name: current_namespace, location: location, kind: :dynamic_namespace)
-        end
 
         super
         @namespace_stack.pop
@@ -922,24 +913,6 @@ module SorbetDeadcode
           recv_type = resolve_receiver_type(receiver_node.receiver)
           @type_resolver.return_type_of(recv_type, receiver_node.name.to_s)
         end
-      end
-
-      # ActionMailer::Preview subclasses are invoked by the Rails preview UI via
-      # routes, not by explicit Ruby calls, so their action methods must be kept alive.
-      #
-      # Detection is deliberately conservative to avoid hiding dead code in unrelated
-      # classes that merely end in "Preview" (e.g. a `DataPreview` service):
-      #   - inherits from a *Preview base (e.g. ActionMailer::Preview), OR
-      #   - is named *MailerPreview (mailer-specific convention), OR
-      #   - is named *Preview AND lives in a mailer_previews path (Rails convention).
-      def mailer_preview_class?(class_node)
-        superclass = class_node.superclass
-        return true if superclass && superclass.slice.include?("Preview")
-
-        name = node_class_name(class_node)
-        return true if name.end_with?("MailerPreview")
-
-        name.end_with?("Preview") && @file_path.include?("mailer_preview")
       end
 
       def node_class_name(class_node)
