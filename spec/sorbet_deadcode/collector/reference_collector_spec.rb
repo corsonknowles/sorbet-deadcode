@@ -493,6 +493,57 @@ module SorbetDeadcode
         refute refs.any? { |r| r.kind == :method && r.name == "SomeValidator" }
       end
 
+      def test_validate_if_unless_conditionals_emit_method_references
+        refs = collect(<<~RUBY)
+          class Model
+            validate :bonus_only, if: :off_cycle_bonus_only_payroll?
+            validate :check, unless: :skip_check?
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "bonus_only"                   # positional method (custom validation)
+        assert_includes names, "off_cycle_bonus_only_payroll?" # if: conditional
+        assert_includes names, "skip_check?"                  # unless: conditional
+      end
+
+      def test_validates_conditional_emitted_but_attribute_is_not
+        refs = collect(<<~RUBY)
+          class Model
+            validates :frequency, presence: true, if: :frequency_required?
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "frequency_required?"  # if: conditional is a method
+        refute_includes names, "frequency"            # validates positional arg is an attribute, not a method
+      end
+
+      def test_callback_if_conditional_array_emits_method_references
+        refs = collect(<<~RUBY)
+          class Model
+            before_save :normalize, if: [:ready?, :enabled?]
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "normalize"
+        assert_includes names, "ready?"
+        assert_includes names, "enabled?"
+      end
+
+      def test_validate_conditional_options_with_splat_do_not_crash
+        refs = collect(<<~RUBY)
+          class Model
+            validate :x, if: :guard?, **shared_options
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "x"
+        assert_includes names, "guard?"
+      end
+
       def test_transactional_commit_callbacks_emit_method_references
         refs = collect(<<~RUBY)
           class Model

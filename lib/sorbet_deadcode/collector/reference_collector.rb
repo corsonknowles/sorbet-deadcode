@@ -50,7 +50,7 @@ module SorbetDeadcode
       # `validate :method_name` dispatches via send(method_name) during validation.
       # `before_validation/after_validation :method` similarly dispatches.
       VALIDATOR_DSL_METHODS = %w[
-        validate
+        validate validates
         before_validation after_validation
         before_create after_create around_create
         before_update after_update around_update
@@ -63,6 +63,10 @@ module SorbetDeadcode
         prepend_before_action append_before_action
         skip_before_action
       ].to_set.freeze
+
+      # Rails validation/callback conditional options whose value is a method name (or array of
+      # them) invoked at validation/callback time: `validate :x, if: :ready?`, `unless: :skip?`.
+      VALIDATOR_CONDITIONAL_KEYS = %w[if unless].to_set.freeze
 
       def initialize(file_path, type_resolver: nil)
         super()
@@ -602,14 +606,24 @@ module SorbetDeadcode
       end
 
       def collect_validator_references(node, location)
-        node.arguments.arguments.each do |arg|
-          next unless arg.is_a?(Prism::SymbolNode)
+        # `validates :col, ...` — positional args are attribute names, not methods. For
+        # `validate`/callbacks the positional symbols are method names (the existing behavior).
+        positional_are_methods = node.name.to_s != "validates"
 
-          @references << Reference.new(
-            name: arg.unescaped,
-            location: location,
-            kind: :method,
-          )
+        node.arguments.arguments.each do |arg|
+          case arg
+          when Prism::SymbolNode
+            @references << Reference.new(name: arg.unescaped, location: location, kind: :method) if positional_are_methods
+          when Prism::KeywordHashNode, Prism::HashNode
+            arg.elements.each do |assoc|
+              next unless assoc.is_a?(Prism::AssocNode)
+
+              key = assoc.key.slice.delete_suffix(":")
+              next unless VALIDATOR_CONDITIONAL_KEYS.include?(key)
+
+              collect_symbol_or_array(assoc.value, location)
+            end
+          end
         end
       end
 
