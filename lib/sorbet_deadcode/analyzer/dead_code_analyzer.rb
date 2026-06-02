@@ -57,6 +57,10 @@ module SorbetDeadcode
 
       def dead_definitions
         ref_index = build_reference_index
+        # A namespace that lexically contains a live definition must not be reported dead —
+        # removing it would remove the live member. Computed from "directly alive" members
+        # (everything except this containment rule), so it's a single non-recursive pass.
+        @namespaces_with_live_members = compute_namespaces_with_live_members(ref_index)
         @definitions.reject { |d| alive?(d, ref_index) }
       end
 
@@ -141,8 +145,18 @@ module SorbetDeadcode
         Set.new(file_counts.select { |_, files| files.size > 1 }.keys)
       end
 
-      # Determine if a definition is alive based on references
+      # Determine if a definition is alive based on references. A namespace is also alive
+      # if it lexically contains a live member (containment rule, computed separately).
       def alive?(definition, ref_index)
+        return true if directly_alive?(definition, ref_index)
+
+        (definition.kind == :class || definition.kind == :module) &&
+          (@namespaces_with_live_members || Set.new).include?(definition.full_name)
+      end
+
+      # Liveness from direct evidence only (references, dispatch, types) — excludes the
+      # namespace containment rule so it can be used to compute that rule without recursion.
+      def directly_alive?(definition, ref_index)
         case definition.kind
         when :class, :module
           # A module/class opened in multiple files is a shared namespace; always live.
@@ -173,6 +187,39 @@ module SorbetDeadcode
         else
           false
         end
+      end
+
+      # full_names of class/module namespaces that lexically enclose at least one
+      # directly-alive definition. Such a namespace can't be dead: deleting it would delete
+      # the live member. Single pass — for each directly-alive definition we mark all of its
+      # enclosing namespaces. This also keeps a namespace alive when it's referenced only by a
+      # relative path (e.g. `include Foo::Bar` from inside `module Outer`, where the
+      # fully-qualified container `Outer::Foo` never appears literally).
+      def compute_namespaces_with_live_members(ref_index)
+        result = Set.new
+        @definitions.each do |definition|
+          next unless directly_alive?(definition, ref_index)
+
+          enclosing_namespaces(definition).each { |ns| result << ns }
+        end
+        result
+      end
+
+      # full_names of the namespaces that lexically enclose a definition (excluding the
+      # definition itself). For a method/attr/constant this is every prefix of its owner; for
+      # a class/module it's every prefix of its parent namespace. e.g. a method on
+      # `A::B::C` yields ["A", "A::B", "A::B::C"]; a module `A::B::C` yields ["A", "A::B"].
+      def enclosing_namespaces(definition)
+        container = case definition.kind
+        when :class, :module
+          definition.full_name.split("::")[0...-1].join("::")
+        else
+          definition.owner_name.to_s
+        end
+        return [] if container.empty?
+
+        parts = container.split("::")
+        (1..parts.size).map { |i| parts[0, i].join("::") }
       end
 
       # A constant whose source is nested inside another (still-alive) constant

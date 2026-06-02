@@ -427,6 +427,65 @@ module SorbetDeadcode
         assert_includes dead_names, "DeadModule"
       end
 
+      def test_compact_namespace_with_live_member_is_kept_alive
+        # `module Outer::Support` is recorded with the fully-qualified name "Outer::Support",
+        # so the short `Cache` reference never matches it directly. But Cache is alive, and
+        # deleting its enclosing namespace would delete it — so the namespace must be kept.
+        analyzer = analyze_source(<<~RUBY)
+          module Outer::Support
+            module Cache
+            end
+          end
+
+          include Cache
+        RUBY
+
+        dead = analyzer.dead_definitions.map(&:full_name)
+        refute_includes dead, "Outer::Support::Cache"
+        refute_includes dead, "Outer::Support"
+      end
+
+      def test_namespace_enclosing_live_method_is_kept_alive
+        analyzer = analyze_source(<<~RUBY)
+          module Outer::Service
+            class Worker
+              def perform
+              end
+            end
+          end
+
+          Worker.new.perform
+        RUBY
+
+        # `Worker.new.perform` keeps Worker#perform alive; the enclosing compact namespace
+        # (never referenced by its fully-qualified name) must be kept alive too.
+        refute_includes analyzer.dead_definitions.map(&:full_name), "Outer::Service"
+      end
+
+      def test_empty_unused_namespace_is_still_dead
+        analyzer = analyze_source(<<~RUBY)
+          module Outer::Unused
+          end
+        RUBY
+
+        assert_includes analyzer.dead_definitions.map(&:full_name), "Outer::Unused"
+      end
+
+      def test_namespace_with_only_dead_members_is_still_dead
+        analyzer = analyze_source(<<~RUBY)
+          module Outer::Dead
+            class Orphan
+              def never_called
+              end
+            end
+          end
+        RUBY
+
+        dead = analyzer.dead_definitions.map(&:full_name)
+        assert_includes dead, "Outer::Dead"
+        assert_includes dead, "Outer::Dead::Orphan"
+      end
+
       def test_predicate_used_only_via_be_matcher_is_alive_when_specs_included
         dir = Dir.mktmpdir
         File.write(File.join(dir, "status.rb"), <<~RUBY)
