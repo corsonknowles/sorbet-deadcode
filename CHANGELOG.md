@@ -24,6 +24,12 @@
   matching the bare `permit` name can only keep a setter alive.
 
 ### Fixed
+- **Transactional `after_*_commit` callbacks are now recognized** (#86) — `VALIDATOR_DSL_METHODS`
+  handled `after_commit`/`after_rollback` but not the common `after_create_commit`,
+  `after_update_commit`, `after_destroy_commit`, `after_save_commit`, or `before_commit`
+  variants, so a method dispatched only through one of those (e.g.
+  `after_create_commit :emit_created_event`) was reported dead. They take symbol method names
+  exactly like the callbacks already handled, so they now emit method references too.
 - **Classifier no longer mislabels referenced namespaced classes/constants as `safe_delete`** —
   `rg --with-filename -o` emits `path:matched`, and the matched token for a compactly-defined
   class/module is the fully-qualified constant (`A::B::C`), which itself contains `::`. The
