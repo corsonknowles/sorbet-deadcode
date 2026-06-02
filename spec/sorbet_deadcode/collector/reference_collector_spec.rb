@@ -1143,6 +1143,27 @@ module SorbetDeadcode
         assert_includes names, "amount="
       end
 
+      def test_insert_upsert_keyword_emit_writer_references
+        refs = collect("Model.insert(charity_ein: ein)\nModel.upsert(amount: amt)\n")
+        names = refs.map(&:name)
+        assert_includes names, "charity_ein="
+        assert_includes names, "amount="
+      end
+
+      def test_insert_all_array_of_hashes_emits_writer_references
+        # array elements that aren't hashes (e.g. a bare value) are ignored without error
+        refs = collect("Model.insert_all([{ charity_ein: ein }, fallback, { amount: amt }])\n")
+        names = refs.map(&:name)
+        assert_includes names, "charity_ein="
+        assert_includes names, "amount="
+      end
+
+      def test_insert_all_with_variable_arg_does_not_crash
+        # a non-array argument (variable) is ignored, no writer references emitted
+        refs = collect("Model.insert_all(rows)\n")
+        refute(refs.any? { |r| r.name.end_with?("=") })
+      end
+
       def test_factory_build_keyword_emits_writer_references
         refs = collect("build(:employee_donation, charity_ein: ein)\n")
         assert_includes refs.map(&:name), "charity_ein="
