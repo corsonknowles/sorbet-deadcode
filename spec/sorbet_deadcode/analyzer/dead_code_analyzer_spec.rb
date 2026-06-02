@@ -411,6 +411,50 @@ module SorbetDeadcode
         assert_includes dead_names, "CATEGORY_A"
       end
 
+      def test_inline_constant_parent_kept_when_collection_referenced_children_surfaced
+        # The parent collection is referenced (used by value), so the parent decl is kept.
+        # Its inline children whose own names are never referenced are still *reported* (so a
+        # human can review removing them + their element), not silently kept alive.
+        analyzer = analyze_source(<<~RUBY)
+          class Config
+            BLOCKED_IDS = [
+              BLOCKED_A = "a",
+              BLOCKED_B = "b",
+            ].freeze
+          end
+
+          Config::BLOCKED_IDS.include?(value)
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "BLOCKED_IDS"   # referenced parent decl is kept
+        assert_includes dead_names, "BLOCKED_A"     # unreferenced inline child surfaced for review
+        assert_includes dead_names, "BLOCKED_B"
+      end
+
+      def test_inline_constant_cluster_through_t_let_wrapper
+        # The array is an *argument* to T.let, not a bare literal; the children must still be
+        # recognized as a cluster so a referenced member keeps the parent decl alive, while an
+        # unreferenced sibling is still surfaced for review.
+        analyzer = analyze_source(<<~RUBY)
+          class Config
+            ADDONS = T.let(
+              [
+                ADDON_NAME = "name",
+                ADDON_ID = "id",
+              ].freeze, T::Array[String]
+            )
+          end
+
+          Config::ADDON_ID
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "ADDONS"        # parent kept (cluster has a referenced member)
+        refute_includes dead_names, "ADDON_ID"      # referenced child is alive
+        assert_includes dead_names, "ADDON_NAME"    # unreferenced inline child surfaced for review
+      end
+
       def test_module_alive_when_referenced
         analyzer = analyze_source(<<~RUBY)
           module UsedModule

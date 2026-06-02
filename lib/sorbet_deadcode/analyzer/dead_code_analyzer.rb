@@ -61,6 +61,10 @@ module SorbetDeadcode
         # removing it would remove the live member. Computed from "directly alive" members
         # (everything except this containment rule), so it's a single non-recursive pass.
         @namespaces_with_live_members = compute_namespaces_with_live_members(ref_index)
+        # An inline-constant cluster (`PARENT = [CHILD = ...]`) is one syntactic unit: if any
+        # member is referenced, none can be deleted without rewriting the literal, so keep them
+        # all alive. Computed once, up front.
+        @alive_inline_constants = compute_alive_inline_constants(ref_index)
         @definitions.reject { |d| alive?(d, ref_index) }
       end
 
@@ -174,7 +178,7 @@ module SorbetDeadcode
         when :constant
           ref_index[:constants].include?(definition.name) ||
             ref_index[:constants].include?(definition.full_name) ||
-            co_located_alive?(definition, ref_index)
+            (@alive_inline_constants || Set.new).include?(definition.full_name)
         when :method, :attr_reader, :attr_writer
           # Ruby/Rails protocol methods that are never called directly.
           # initialize: .new → constant reference, not method reference.
@@ -222,13 +226,38 @@ module SorbetDeadcode
         (1..parts.size).map { |i| parts[0, i].join("::") }
       end
 
-      # A constant whose source is nested inside another (still-alive) constant
-      # must not be reported dead — removing the parent would remove it.
-      def co_located_alive?(definition, ref_index)
-        definition.co_located_names.any? do |child|
-          full = definition.owner_name ? "#{definition.owner_name}::#{child}" : child
-          ref_index[:constants].include?(child) || ref_index[:constants].include?(full)
+      # full_names of *parent* constants whose inline-constant cluster has at least one
+      # referenced member. A cluster is a parent constant assigned a collection literal that
+      # inline-assigns other constants (`PARENT = [CHILD_A = 'a', CHILD_B = 'b'].freeze`, also
+      # through a `T.let(...)` wrapper). Ruby evaluates those inner assignments as a side effect,
+      # so the parent decl can't be deleted while a member is referenced — keep it alive.
+      #
+      # Children are intentionally NOT kept alive here: a referenced child is already alive via
+      # the normal name check, and an *unreferenced* inline child stays reported so the Classifier
+      # can surface it as a low-actionability `inline_constant` review (it may be removable, but
+      # only together with its element in the literal — never an automatic safe_delete). A cluster
+      # with no referenced member at all keeps nothing, so a truly-unused block is fully reported.
+      def compute_alive_inline_constants(ref_index)
+        by_full = @definitions.each_with_object({}) do |d, h|
+          h[d.full_name] = d if d.kind == :constant
         end
+
+        alive = Set.new
+        @definitions.each do |definition|
+          next unless definition.kind == :constant && definition.co_located_names.any?
+
+          members = [definition]
+          definition.co_located_names.each do |child|
+            child_full = definition.owner_name ? "#{definition.owner_name}::#{child}" : child
+            child_def = by_full[child_full]
+            members << child_def if child_def
+          end
+
+          next unless members.any? { |m| ref_index[:constants].include?(m.name) || ref_index[:constants].include?(m.full_name) }
+
+          alive << definition.full_name # keep only the parent decl
+        end
+        alive
       end
 
       # Conservatively keep methods reachable through dynamic dispatch alive:

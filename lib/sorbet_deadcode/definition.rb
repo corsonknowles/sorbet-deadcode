@@ -5,7 +5,7 @@ module SorbetDeadcode
     KINDS = %i[method class module constant attr_reader attr_writer].freeze
 
     attr_reader :name, :full_name, :kind, :location, :owner_name, :co_located_names, :superclass_name,
-                :file, :line
+                :file, :line, :inline_member
 
     # Optional metadata (not part of identity): set by a refiner in :report mode to record
     # that this candidate was kept alive only by a non-Ruby reference of the given source
@@ -18,8 +18,11 @@ module SorbetDeadcode
     # superclass_name: for a class definition, the (short) name of its direct superclass as
     # written (e.g. `class Foo < Base` => "Base"). Used to keep subclasses of a base that is
     # reflected over via `.descendants` / `.subclasses` alive.
+    # inline_member: true when this constant is assigned inline inside another constant's
+    # collection literal (`PARENT = [CHILD = 1]`). Such a constant can't be removed on its own
+    # without also editing the enclosing literal, so it's surfaced for review, never safe_delete.
     def initialize(name:, full_name:, kind:, location:, owner_name: nil, co_located_names: [],
-                   superclass_name: nil)
+                   superclass_name: nil, inline_member: false)
       raise ArgumentError, "unknown kind: #{kind}" unless KINDS.include?(kind)
 
       @name = name
@@ -35,6 +38,7 @@ module SorbetDeadcode
       @owner_name = owner_name
       @co_located_names = co_located_names
       @superclass_name = superclass_name
+      @inline_member = inline_member
       @kept_by = nil
     end
 
