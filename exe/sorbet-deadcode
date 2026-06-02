@@ -280,7 +280,8 @@ end
 # Introspection flags (--show-*) report what was indexed and exit, bypassing the dead-code report.
 if options[:show_plugins]
   registry = options[:conventions] || SorbetDeadcode::Conventions::Registry.default
-  registry.conventions.each { |convention| puts convention.name }
+  registry.conventions.each { |convention| puts "convention #{convention.name}" }
+  registry.send_handlers.each { |handler| puts "send_handler #{handler.name}" }
   exit 0
 end
 

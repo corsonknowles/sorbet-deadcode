@@ -69,6 +69,48 @@ module SorbetDeadcode
         assert_includes names, "rubocop_cop"
         assert_includes names, "active_job"
       end
+
+      def test_default_send_handlers_cover_callbacks_and_validates
+        registry = Registry.default
+
+        assert_equal "rails_callbacks", registry.send_handler_for("before_save")&.name
+        assert_equal "rails_callbacks", registry.send_handler_for("after_touch")&.name
+        assert_equal "validates", registry.send_handler_for("validates")&.name
+        assert_nil registry.send_handler_for("some_unknown_dsl")
+      end
+
+      def test_register_send_handler_keyword_and_instance
+        from_attrs = Registry.new.register_send_handler(name: "track", methods: ["track_event"])
+        assert_equal "track", from_attrs.send_handler_for("track_event")&.name
+
+        handler = SendHandler.new(name: "inst", methods: ["log_event"])
+        from_instance = Registry.new.register_send_handler(handler)
+        assert_equal "inst", from_instance.send_handler_for("log_event")&.name
+      end
+
+      def test_from_config_builds_custom_send_handlers
+        config = {
+          "send_handlers" => [
+            { "name" => "track", "methods" => %w[track_event log_event], "positional" => "methods",
+              "conditional_options" => true },
+          ],
+        }
+        registry = Registry.from_config(config)
+
+        handler = registry.send_handler_for("log_event")
+        assert_equal "track", handler&.name
+        assert handler.positional_methods?
+        assert handler.conditional_options?
+        # built-in send-handlers still present
+        assert_equal "rails_callbacks", registry.send_handler_for("before_save")&.name
+      end
+
+      def test_send_handlers_reader_exposes_builtins
+        names = Registry.default.send_handlers.map(&:name)
+
+        assert_includes names, "rails_callbacks"
+        assert_includes names, "validates"
+      end
     end
   end
 end
