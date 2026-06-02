@@ -6,6 +6,8 @@ require_relative "sorbet_deadcode/version"
 require_relative "sorbet_deadcode/ripgrep"
 require_relative "sorbet_deadcode/definition"
 require_relative "sorbet_deadcode/reference"
+require_relative "sorbet_deadcode/conventions/convention"
+require_relative "sorbet_deadcode/conventions/registry"
 require_relative "sorbet_deadcode/collector/definition_collector"
 require_relative "sorbet_deadcode/collector/reference_collector"
 require_relative "sorbet_deadcode/resolver/type_resolver"
@@ -40,12 +42,13 @@ module SorbetDeadcode
   class Error < StandardError; end
 
   class << self
-    def analyze(paths, exclude_paths: [], reference_paths: nil, dynamic_dispatch: :exclude)
+    def analyze(paths, exclude_paths: [], reference_paths: nil, dynamic_dispatch: :exclude, conventions: nil)
       analyzer = Analyzer::DeadCodeAnalyzer.new(
         paths: paths,
         exclude_paths: exclude_paths,
         reference_paths: reference_paths,
         dynamic_dispatch: dynamic_dispatch,
+        conventions: conventions,
       )
       analyzer.run
     end

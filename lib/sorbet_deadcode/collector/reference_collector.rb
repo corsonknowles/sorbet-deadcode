@@ -51,33 +51,8 @@ module SorbetDeadcode
       # `field :x, method: :method_name` → calls `method_name`
       GRAPHQL_DSL_METHODS = %w[builds argument field mutation].to_set.freeze
 
-      # graphql-ruby invokes these methods by convention on type/mutation/resolver/scalar/enum
-      # classes (no explicit Ruby call site). Kept alive only inside a detected GraphQL class
-      # (owner-scoped) — a same-named method on an unrelated class is still checked.
-      GRAPHQL_HOOK_METHODS = %w[
-        resolve coerce_input coerce_result resolve_type graphql_name subscribed unsubscribed
-      ].freeze
-
-      # ActiveJob / Sidekiq invoke these by convention on job/worker classes (the framework
-      # calls `perform`; iteration jobs use build_enumerator/each_iteration). Kept alive only
-      # inside a detected job class (owner-scoped) — a `perform` on a service object is still
-      # checked, unlike a blanket global-name ignore.
-      ACTIVEJOB_HOOK_METHODS = %w[perform build_enumerator each_iteration].freeze
-
-      # Superclass names that mark an ActiveJob/Sidekiq job class.
-      JOB_SUPERCLASS = /\A(ApplicationJob|ApplicationWorker)\z|ActiveJob::Base/
-
-      # Minitest lifecycle hooks invoked by the framework on a test class.
-      MINITEST_HOOK_METHODS = %w[
-        setup teardown before_setup after_setup before_teardown after_teardown
-        before_all after_all around around_all
-      ].freeze
-
       # `assert_predicate obj, :foo?` / `refute_predicate obj, :foo?` invoke `foo?`.
       ASSERT_PREDICATE_METHODS = %w[assert_predicate refute_predicate].to_set.freeze
-
-      # Superclasses that mark a Minitest/ActiveSupport test class.
-      TEST_SUPERCLASS = /(Minitest::(Test|Spec)|ActiveSupport::TestCase|Test::Unit::TestCase)\z/
 
       # ActiveModel/Rails DSL methods that take symbol names of methods to call.
       # `validate :method_name` dispatches via send(method_name) during validation.
@@ -108,11 +83,12 @@ module SorbetDeadcode
       # class. (`if`/`unless` are handled separately as conditional method references.)
       VALIDATES_STANDARD_OPTIONS = %w[on allow_nil allow_blank message strict].to_set.freeze
 
-      def initialize(file_path, type_resolver: nil)
+      def initialize(file_path, type_resolver: nil, conventions: nil)
         super()
         @file_path = file_path
         @references = []
         @type_resolver = type_resolver
+        @conventions = conventions || Conventions::Registry.default
         @namespace_stack = []
         @local_types = {}
         @definition_locations = Set.new
@@ -131,16 +107,12 @@ module SorbetDeadcode
         @definition_locations << node.constant_path.location.start_line
         @namespace_stack.push(node.constant_path.slice)
 
-        # If this class inherits from a Visitor-protocol base (e.g. Prism::Visitor,
-        # Prism::BasicVisitor), its visit_* methods are dispatched dynamically by
-        # the framework via public_send("visit_#{type}", node). Emit a method_prefix
-        # reference so the existing dynamically_dispatched? guard keeps them alive.
         location = format_location(node.location)
 
-        if visitor_subclass?(node)
-          # Prism::Visitor subclasses: visit_* methods dispatched by framework.
-          @references << Reference.new(name: "visit_", location: location, kind: :method_prefix)
-        end
+        # Base-class-scoped framework conventions (visitor / graphql / job / rubocop cop / minitest
+        # / migration / generator + any project-registered ones): keep framework-invoked methods
+        # alive, scoped to the matching class. See Conventions::Registry.
+        emit_convention_references(node, location)
 
         if mailer_preview_class?(node)
           # ActionMailer::Preview subclasses: preview methods are invoked by the
@@ -149,51 +121,6 @@ module SorbetDeadcode
           # (the preview actions) are kept alive. Use the fully-qualified namespace so
           # it matches the owner_name recorded for nested definitions.
           @references << Reference.new(name: current_namespace, location: location, kind: :dynamic_namespace)
-        end
-
-        if generator_subclass?(node)
-          # Rails generators (Rails::Generators::Base / NamedBase) and Thor command
-          # classes invoke every public instance method as an ordered step/command via
-          # reflection, not by explicit Ruby calls. Keep the whole namespace alive.
-          @references << Reference.new(name: current_namespace, location: location, kind: :dynamic_namespace)
-        end
-
-        if graphql_type_class?(node)
-          # graphql-ruby calls resolve/coerce_*/resolve_type/etc by convention on this class.
-          # Emit an OWNER-TYPED reference (receiver_type = this class) per hook so only this
-          # class's hook methods are kept alive — unlike a global ignore, a same-named method
-          # on a non-GraphQL class is still subject to dead-code analysis.
-          GRAPHQL_HOOK_METHODS.each do |hook|
-            @references << Reference.new(name: hook, location: location, kind: :method, receiver_type: current_namespace)
-          end
-        end
-
-        if job_class?(node)
-          # ActiveJob/Sidekiq call perform (and build_enumerator/each_iteration on iteration
-          # jobs) by convention. Owner-typed so a `perform` on a non-job class is still checked.
-          ACTIVEJOB_HOOK_METHODS.each do |hook|
-            @references << Reference.new(name: hook, location: location, kind: :method, receiver_type: current_namespace)
-          end
-        end
-
-        if migration_class?(node)
-          # ActiveRecord migrations are run by the migration framework via their version/filename,
-          # not by any constant/method reference. Keep the whole class (change/up/down + helpers).
-          @references << Reference.new(name: current_namespace, location: location, kind: :dynamic_namespace)
-        end
-
-        if each_validator_class?(node)
-          # ActiveModel::EachValidator subclasses' `validate_each` is invoked by the framework.
-          @references << Reference.new(name: "validate_each", location: location, kind: :method, receiver_type: current_namespace)
-        end
-
-        if minitest_test_class?(node)
-          # Minitest runs `test_*` methods and setup/teardown hooks by reflection. Keep the
-          # test_* family alive via a prefix, and the lifecycle hooks owner-typed to this class.
-          @references << Reference.new(name: "test_", location: location, kind: :method_prefix)
-          MINITEST_HOOK_METHODS.each do |hook|
-            @references << Reference.new(name: hook, location: location, kind: :method, receiver_type: current_namespace)
-          end
         end
 
         super
@@ -769,22 +696,40 @@ module SorbetDeadcode
         @references << Reference.new(name: predicate.unescaped, location: location, kind: :method)
       end
 
-      # An ActiveRecord migration class (`< ActiveRecord::Migration[7.1]`).
-      def migration_class?(class_node)
-        class_node.superclass&.slice&.include?("ActiveRecord::Migration") || false
+      # Consult the convention registry for this class and emit the kept-alive references each
+      # matching convention prescribes. keep_methods are owner-typed (scoped to this class) so a
+      # same-named method elsewhere is still analyzed; keep_prefixes are method-prefix references
+      # (kept alive wherever they occur, like the visit_/test_ families); keep_namespace marks the
+      # whole class dynamically dispatched (reflection-driven classes — migrations, generators).
+      def emit_convention_references(class_node, location)
+        superclass = class_node.superclass&.slice
+        class_name = node_class_name(class_node)
+        includes = included_modules(class_node)
+
+        @conventions.matching(
+          superclass: superclass, class_name: class_name, file_path: @file_path, includes: includes,
+        ).each do |convention|
+          convention.keep_methods.each do |hook|
+            @references << Reference.new(name: hook, location: location, kind: :method, receiver_type: current_namespace)
+          end
+          convention.keep_prefixes.each do |prefix|
+            @references << Reference.new(name: prefix, location: location, kind: :method_prefix)
+          end
+          @references << Reference.new(name: current_namespace, location: location, kind: :dynamic_namespace) if convention.keep_namespace?
+        end
       end
 
-      # An ActiveModel::EachValidator subclass (`< ActiveModel::EachValidator`, or an app
-      # `*EachValidator` base) — its `validate_each` is invoked by the validation framework.
-      def each_validator_class?(class_node)
-        class_node.superclass&.slice&.end_with?("EachValidator") || false
-      end
+      # Module names `include`d at the top level of the class body (`include Sidekiq::Job`), used
+      # by conventions that match on an included module rather than a superclass.
+      def included_modules(class_node)
+        body = class_node.body
+        return [] unless body.is_a?(Prism::StatementsNode)
 
-      # A Minitest / ActiveSupport::TestCase test class — by superclass or a `*Test` name.
-      def minitest_test_class?(class_node)
-        return true if class_node.superclass&.slice&.match?(TEST_SUPERCLASS)
+        body.body.flat_map do |stmt|
+          next [] unless stmt.is_a?(Prism::CallNode) && stmt.name == :include && stmt.receiver.nil?
 
-        node_class_name(class_node).end_with?("Test")
+          stmt.arguments ? stmt.arguments.arguments.map(&:slice) : []
+        end
       end
 
       # Emit read + write references for an operator-assignment to a method receiver
@@ -922,64 +867,6 @@ module SorbetDeadcode
           recv_type = resolve_receiver_type(receiver_node.receiver)
           @type_resolver.return_type_of(recv_type, receiver_node.name.to_s)
         end
-      end
-
-      # Returns true when the class inherits from any class whose name contains
-      # "Visitor" — covers Prism::Visitor, Prism::BasicVisitor, and custom visitor
-      # base classes following the same naming convention.
-      def visitor_subclass?(class_node)
-        superclass = class_node.superclass
-        return false unless superclass
-
-        superclass.slice.include?("Visitor")
-      end
-
-      # An ActiveJob / Sidekiq job class. Detected by superclass (`ApplicationJob`,
-      # `ActiveJob::Base`, `ApplicationWorker`) or by a `include Sidekiq::Job` / `Sidekiq::Worker`
-      # in the class body.
-      def job_class?(class_node)
-        return true if class_node.superclass&.slice&.match?(JOB_SUPERCLASS)
-
-        includes_module?(class_node, "Sidekiq::Job", "Sidekiq::Worker")
-      end
-
-      # True if the class body has a top-level `include <Mod>` for any of the given module names.
-      def includes_module?(class_node, *module_names)
-        body = class_node.body
-        return false unless body.is_a?(Prism::StatementsNode)
-
-        body.body.any? do |stmt|
-          next false unless stmt.is_a?(Prism::CallNode) && stmt.name == :include && stmt.receiver.nil?
-
-          args = stmt.arguments
-          next false unless args
-
-          args.arguments.any? { |arg| module_names.include?(arg.slice) }
-        end
-      end
-
-      # A graphql-ruby type/mutation/resolver/scalar/enum/etc. class, detected by superclass:
-      # a canonical `GraphQL::Schema::*` base, or an app base following the `*Base<Kind>`
-      # convention (e.g. `Types::BaseObject`, `Mutations::BaseMutation`, `BaseResolver`).
-      def graphql_type_class?(class_node)
-        superclass = class_node.superclass
-        return false unless superclass
-
-        slice = superclass.slice
-        slice.include?("GraphQL::Schema::") ||
-          slice.match?(/(?:\A|::)Base(Object|Mutation|Resolver|InputObject|Interface|Enum|Scalar|Union|Subscription)\z/)
-      end
-
-      # Rails generators (`< Rails::Generators::Base` / `NamedBase`) and Thor command
-      # classes (`< Thor` / `< Thor::Group`) run every public instance method as an
-      # ordered step/command via reflection, so those methods have no explicit Ruby
-      # call site even though the framework invokes them.
-      def generator_subclass?(class_node)
-        superclass = class_node.superclass
-        return false unless superclass
-
-        slice = superclass.slice
-        slice.match?(/Generators::(Named)?Base\z/) || slice == "Thor" || slice == "Thor::Group"
       end
 
       # ActionMailer::Preview subclasses are invoked by the Rails preview UI via

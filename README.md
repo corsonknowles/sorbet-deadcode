@@ -221,6 +221,32 @@ also removes its attached comments and Sorbet `sig`s. Beyond Spoom's one-locatio
 constants are supported today; `attr_reader`/`attr_writer` and inline-constant members are skipped
 and reported. Like `--spoom`, this needs the optional `spoom` gem.
 
+### Framework conventions & custom config (`--config`)
+
+Frameworks invoke methods *by name* with no explicit Ruby call site (`perform` on a job, `on_send`
+in a RuboCop cop, `resolve` on a GraphQL type). `sorbet-deadcode` keeps these alive with
+**base-class-scoped conventions** — scoped to the framework classes that use them, so a same-named
+method on an unrelated class is still analyzed (unlike a global name allow-list). Built-ins cover
+Prism visitors, graphql-ruby types, ActiveJob/Sidekiq jobs, RuboCop cops (`on_*`), Minitest,
+`EachValidator`, migrations, and Rails/Thor generators.
+
+To cover in-house base classes, register your own conventions in a `.sorbet-deadcode.yml` at the
+project root (auto-loaded), or point at one with `--config FILE`:
+
+```yaml
+conventions:
+  - name: event_consumer
+    superclass: EventConsumer     # Regexp string matched against the superclass
+    keep_methods: [consume]       # kept alive, scoped to matching classes
+  - name: karafka_consumer
+    includes: [Karafka::Consumer] # match classes that `include` this module
+    keep_namespace: true          # keep the whole class (reflection-driven)
+```
+
+A class matches if its `superclass` matches, it `includes` one of the listed modules, or its name
+ends with `name_suffix` (optionally gated by `path_includes`). Keep directives: `keep_methods`
+(owner-scoped names), `keep_prefixes` (e.g. `on_`), or `keep_namespace` (the whole class).
+
 ### Reporting dynamic dispatch (`--report-dynamic-dispatch`)
 
 By default, a method is conservatively kept alive when its namespace contains a
