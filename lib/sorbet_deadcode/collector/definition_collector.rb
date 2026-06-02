@@ -13,6 +13,7 @@ module SorbetDeadcode
         @definitions = []
         @namespace_stack = []
         @enum_stack = [] # parallel to @namespace_stack: is each enclosing class a T::Enum?
+        @in_constant_value = false # true while visiting a constant's value (for inline members)
       end
 
       def visit_class_node(node)
@@ -75,8 +76,16 @@ module SorbetDeadcode
           location: format_location(node.location),
           owner_name: current_namespace,
           co_located_names: nested_constant_names(node.value),
+          # We're inside another constant's value if the depth guard is set — i.e. this is an
+          # inline assignment like `PARENT = [CHILD = 1]`, so CHILD is an inline member.
+          inline_member: @in_constant_value,
         )
+
+        # While visiting this constant's value, any nested ConstantWriteNode is an inline member.
+        was_in_value = @in_constant_value
+        @in_constant_value = true
         super
+        @in_constant_value = was_in_value
       end
 
       # Ruby evaluates assignments inside literals as side effects:

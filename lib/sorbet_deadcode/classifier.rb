@@ -103,7 +103,9 @@ module SorbetDeadcode
 
     def build_flags(definition, spec_refs, non_ruby, production_ruby)
       flags = []
-      flags << :inline_constant if definition.co_located_names.any?
+      # A parent constant holding inline children, or an inline child itself, can only be
+      # removed by editing the enclosing literal — route to review, never safe_delete.
+      flags << :inline_constant if definition.co_located_names.any? || definition.inline_member
       flags << :spec_only if spec_refs.any? && production_ruby.empty? && non_ruby.empty?
       flags << :non_ruby_reference if non_ruby.any?
       flags << :live_reference if production_ruby.any?

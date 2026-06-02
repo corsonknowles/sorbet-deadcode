@@ -120,6 +120,20 @@ module SorbetDeadcode
       assert_equal :review, result.suggested_action
     end
 
+    def test_inline_member_child_is_review_not_safe_delete
+      path = write("app/config.rb", "class Config\n  PARENT = [CHILD = 1].freeze\nend\n")
+      candidate = Definition.new(
+        name: "CHILD", full_name: "Config::CHILD", kind: :constant,
+        location: "#{path}:2", owner_name: "Config", inline_member: true
+      )
+
+      result = classify_one(candidate)
+
+      # An unreferenced inline child (removable only by editing the literal) → review, not safe_delete.
+      assert_includes result.flags, :inline_constant
+      assert_equal :review, result.suggested_action
+    end
+
     def test_predicate_method_reference_counts
       path = write("app/foo.rb", "class Foo\n  def ready?\n  end\nend\n")
       write("app/caller.rb", "Foo.new.ready?\n")

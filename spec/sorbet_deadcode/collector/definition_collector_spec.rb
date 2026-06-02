@@ -146,6 +146,20 @@ module SorbetDeadcode
         assert_equal %w[ADDON_NAME ADDON_ID], parent.co_located_names
       end
 
+      def test_inline_members_are_marked_parents_are_not
+        defs = collect(<<~RUBY)
+          class Config
+            PARENT = [CHILD_A = "a", CHILD_B = "b"].freeze
+            SIMPLE = 1
+          end
+        RUBY
+
+        refute defs.find { |d| d.name == "PARENT" }.inline_member
+        refute defs.find { |d| d.name == "SIMPLE" }.inline_member
+        assert defs.find { |d| d.name == "CHILD_A" }.inline_member
+        assert defs.find { |d| d.name == "CHILD_B" }.inline_member
+      end
+
       def test_inline_constants_in_hash_are_co_located
         defs = collect(<<~RUBY)
           class Config

@@ -24,16 +24,20 @@
   matching the bare `permit` name can only keep a setter alive.
 
 ### Fixed
-- **Inline constants in a collection literal are treated as one cluster** (#88) — a constant
-  assigned a collection that inline-assigns other constants (`PARENT = [CHILD = 'a'].freeze`,
-  including through a `T.let([...], T::Array[...])` wrapper) is a single syntactic unit: Ruby
-  evaluates the inner assignments as a side effect, so deleting any member rewrites the literal.
-  The collector now also descends into call *arguments* (previously only the `.freeze` receiver),
-  so `T.let`-wrapped collections record their children; and the analyzer keeps the whole cluster
-  alive when any member is referenced — protecting both directions (a referenced child keeps the
-  parent collection; a referenced parent keeps its inline children, e.g. SKU id constants inside
-  a referenced `BLOCKED_IDS` array). A cluster with no referenced member is still reported (as a
-  reviewable `inline_constant`), so a truly-unused block can be removed whole.
+- **Inline constants in a collection literal are handled correctly** (#88) — a constant assigned
+  a collection that inline-assigns other constants (`PARENT = [CHILD = 'a'].freeze`, including
+  through a `T.let([...], T::Array[...])` wrapper) is a single syntactic unit: Ruby evaluates the
+  inner assignments as a side effect, so a member can only be removed by editing the literal.
+  Two changes:
+  - The collector now descends into call *arguments* (previously only the `.freeze` receiver),
+    so `T.let`-wrapped collections record their inline children; those children are also tagged
+    `inline_member`.
+  - The analyzer keeps the parent decl alive when any cluster member is referenced (so a
+    referenced collection or a referenced child no longer makes the parent look dead). An
+    *unreferenced* inline child is still reported, but the Classifier now flags it
+    `inline_constant` and routes it to **review** (never `safe_delete`) — it may be removable,
+    but only together with its element in the literal, which a human should confirm (the value
+    may still matter, e.g. for arrays checked with `.include?`).
 - **More AASM event callback keys are recognized** (#89) — `collect_aasm_references` handled
   `after`/`before`/`guard`/`after_commit`/`after_rollback`/`on_transition`/`error`, but a method
   dispatched only through `before_transaction`, `after_transaction`, `success`, `unless`, or

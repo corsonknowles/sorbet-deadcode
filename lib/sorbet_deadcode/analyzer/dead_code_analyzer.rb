@@ -226,15 +226,17 @@ module SorbetDeadcode
         (1..parts.size).map { |i| parts[0, i].join("::") }
       end
 
-      # full_names of constants that belong to an inline-constant cluster with at least one
+      # full_names of *parent* constants whose inline-constant cluster has at least one
       # referenced member. A cluster is a parent constant assigned a collection literal that
       # inline-assigns other constants (`PARENT = [CHILD_A = 'a', CHILD_B = 'b'].freeze`, also
       # through a `T.let(...)` wrapper). Ruby evaluates those inner assignments as a side effect,
-      # so the parent and its children are a single syntactic unit: deleting any one mutates the
-      # literal. If any member is referenced (by short or full name) we keep the whole cluster —
-      # protecting both directions (a referenced child keeps the parent; a referenced parent
-      # collection keeps its inline children). A cluster with no referenced member is still
-      # reported dead, so a truly-unused block can be removed whole.
+      # so the parent decl can't be deleted while a member is referenced — keep it alive.
+      #
+      # Children are intentionally NOT kept alive here: a referenced child is already alive via
+      # the normal name check, and an *unreferenced* inline child stays reported so the Classifier
+      # can surface it as a low-actionability `inline_constant` review (it may be removable, but
+      # only together with its element in the literal — never an automatic safe_delete). A cluster
+      # with no referenced member at all keeps nothing, so a truly-unused block is fully reported.
       def compute_alive_inline_constants(ref_index)
         by_full = @definitions.each_with_object({}) do |d, h|
           h[d.full_name] = d if d.kind == :constant
@@ -253,7 +255,7 @@ module SorbetDeadcode
 
           next unless members.any? { |m| ref_index[:constants].include?(m.name) || ref_index[:constants].include?(m.full_name) }
 
-          members.each { |m| alive << m.full_name }
+          alive << definition.full_name # keep only the parent decl
         end
         alive
       end
