@@ -46,3 +46,26 @@ jobs:
 
       - name: Run RuboCop
         run: bundle exec rake lint
+
+  spoom-integration:
+    name: Spoom integration
+    runs-on: ubuntu-latest
+    # Install the optional :spoom group (via BUNDLE_WITH, honored by setup-ruby's bundle install)
+    # so the live Spoom::Runner integration test runs instead of skipping. This lane catches drift
+    # in spoom's internal API up front; the default test lanes stay spoom-free.
+    env:
+      BUNDLE_WITH: spoom
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+
+      - name: Install ripgrep
+        run: sudo apt-get install -y ripgrep
+
+      - name: Run tests with spoom
+        run: bundle exec rake test
