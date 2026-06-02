@@ -24,6 +24,11 @@
   matching the bare `permit` name can only keep a setter alive.
 
 ### Fixed
+- **ActiveModel `attribute` accessors and custom validators recognized** (#105) — `attribute :foo`
+  (and `attributes :a, :b`) now keep an overriding `def foo`/`def foo=` alive, and a `validates`
+  option key that isn't a standard option (`on`/`allow_nil`/`allow_blank`/`message`/`strict`/`if`/
+  `unless`) emits a reference to its `<Key>Validator` constant (e.g. `validates :pw,
+  strong_password: true` keeps `StrongPasswordValidator` alive).
 - **More mass-assignment entry points recognized** (#104) — `insert`/`insert!`/`upsert` now emit
   `key=` writer references like `create`/`update`, and the bulk array forms
   `insert_all`/`insert_all!`/`upsert_all` emit writers for each key in their array of attribute
