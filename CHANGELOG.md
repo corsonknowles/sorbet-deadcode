@@ -24,6 +24,12 @@
   matching the bare `permit` name can only keep a setter alive.
 
 ### Fixed
+- **Framework convention hooks are kept alive** — methods a framework invokes *by name* via
+  convention/reflection (no explicit Ruby call site) were reported dead. Added a built-in
+  `FRAMEWORK_HOOK_METHODS` keep-alive set covering unambiguous, widely-used hooks
+  (`sidekiq_unique_context`, `sidekiq_retries_exhausted`, `sidekiq_retry_in`). A configurable
+  plugin API (planned) will let projects register their own framework conventions, including
+  base-class-scoped ones like RuboCop cops' `on_*` handlers.
 - **GraphQL field resolver methods are no longer reported dead** (#92) — in a code-first
   graphql-ruby schema a `field :foo` is resolved by calling a same-named method `foo` on the
   type when one is defined, but `collect_graphql_references` only emitted references for a

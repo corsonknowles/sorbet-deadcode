@@ -566,6 +566,20 @@ module SorbetDeadcode
         refute_includes dead_names, "respond_to_missing?"
       end
 
+      def test_framework_convention_hook_is_never_dead
+        # sidekiq_unique_context is invoked by Sidekiq by name (convention), so it has no
+        # explicit Ruby call site but must not be reported dead.
+        analyzer = analyze_source(<<~RUBY)
+          class ContractorCreated
+            def self.sidekiq_unique_context(job)
+              [job['class'], job['queue'], job['args'].first(1)]
+            end
+          end
+        RUBY
+
+        refute_includes analyzer.dead_definitions.map(&:name), "sidekiq_unique_context"
+      end
+
       def test_validate_callback_method_is_alive
         analyzer = analyze_source(<<~RUBY)
           class Order
