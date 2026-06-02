@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+- **`--spoom` CLI flag was unusable** — a `--remove` help-text continuation line began with
+  `--spoom`, which OptionParser silently registered as an *alias* of `--remove`, so `--spoom`
+  inherited `--remove`'s mandatory `TIER` argument and raised `missing argument: --spoom`. Reworded
+  the help so no description line starts with `--`, and added a CLI-help regression spec that fails
+  if any `opts.on` continuation line begins with `--` (or if `--spoom` ever renders as taking an
+  argument). The `--spoom` engine/`Runner` was always fine — only the CLI flag wiring was affected.
+
 ### Added
 - **Registerable send-handler DSL plugins** (#36) — the receiver-less DSL handlers (`validate` /
   `validates` / Rails+controller+job callbacks) are now expressed as `Conventions::SendHandler`
