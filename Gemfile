@@ -16,3 +16,10 @@ group :development, :test do
   gem "simplecov", "~> 0.22", require: false
   gem "sorbet-static-and-runtime"
 end
+
+# Optional: only needed to exercise the `--spoom` intersection integration test (Spoom::Runner).
+# Not installed by default — the spoom-integration CI lane enables it with `bundle config with spoom`.
+# spoom is likewise an optional runtime dependency for end users of `--spoom`.
+group :spoom, optional: true do
+  gem "spoom"
+end

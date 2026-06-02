@@ -17,6 +17,12 @@ module SorbetDeadcode
       DEFAULT_EXTENSIONS = [".rb", ".erb", ".gemspec"].freeze
       DEFAULT_MIME_TYPES = ["text/x-ruby", "text/x-ruby-script"].freeze
 
+      # spoom's dead-code Ruby API is internal and may shift between releases. We pin the range
+      # this adapter is tested against and warn (don't fail) outside it, so a spoom upgrade that
+      # changes the API surfaces a clear hint rather than a cryptic NoMethodError. The
+      # spoom-integration CI lane runs the real adapter so drift is caught up front.
+      TESTED_SPOOM_REQUIREMENT = Gem::Requirement.new(">= 1.7", "< 2.0")
+
       # @return [SorbetDeadcode::Index] spoom's dead set for `paths`, as our Index.
       def dead_index(paths, project_root: ".", exclude_paths: [])
         Converter.index_from_rows(dead_rows(paths, project_root: project_root, exclude_paths: exclude_paths), paths: paths)
@@ -41,9 +47,18 @@ module SorbetDeadcode
         require "spoom"
         # spoom's gemfile-lock plugin loader references the Bundler constant directly.
         require "bundler"
+        warn_if_untested_spoom_version
       rescue ::LoadError
         raise SorbetDeadcode::Error,
               "spoom is not installed. Add `gem \"spoom\"` to your Gemfile (or `gem install spoom`) to use --spoom."
+      end
+
+      def warn_if_untested_spoom_version
+        return unless defined?(::Spoom::VERSION)
+        return if TESTED_SPOOM_REQUIREMENT.satisfied_by?(Gem::Version.new(::Spoom::VERSION))
+
+        $stderr.puts "[sorbet-deadcode] warning: spoom #{::Spoom::VERSION} is outside the tested " \
+                     "range (#{TESTED_SPOOM_REQUIREMENT}); --spoom may need updating if it errors."
       end
 
       def collect_files(paths, exclude_paths)
