@@ -457,6 +457,25 @@ module SorbetDeadcode
         refute refs.any? { |r| r.kind == :method && r.name == "SomeValidator" }
       end
 
+      def test_transactional_commit_callbacks_emit_method_references
+        refs = collect(<<~RUBY)
+          class Model
+            after_create_commit :emit_created
+            after_update_commit :emit_updated
+            after_destroy_commit :emit_destroyed
+            after_save_commit :sync_changes
+            before_commit :stage_changes
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "emit_created"
+        assert_includes names, "emit_updated"
+        assert_includes names, "emit_destroyed"
+        assert_includes names, "sync_changes"
+        assert_includes names, "stage_changes"
+      end
+
       def test_accepts_nested_attributes_emits_prefix_reference
         refs = collect(<<~RUBY)
           class Order

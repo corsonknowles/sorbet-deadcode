@@ -29,6 +29,20 @@
   dispatched only through `before_transaction`, `after_transaction`, `success`, `unless`, or
   `ensure` (e.g. `event :go, before_transaction: :set_remove_date`) was reported dead. These keys
   take a symbol or array of symbols like the others, so they now emit method references too.
+- **A namespace that contains a live member is no longer reported dead** (#84) — a
+  compact-defined namespace (`module Outer::Support`) is recorded under its fully-qualified
+  name, so a relative reference to its child (`include Support::Cache` from inside `Outer`)
+  never matches the namespace's own name, and it was reported `safe_delete` even though
+  deleting it would delete the live child. The analyzer now keeps any class/module alive
+  when it lexically encloses a directly-alive definition (computed in one non-recursive pass
+  from the directly-alive set, mirroring the existing inline-constant containment rule).
+  Genuinely-empty or fully-dead namespaces are still reported.
+- **Transactional `after_*_commit` callbacks are now recognized** (#86) — `VALIDATOR_DSL_METHODS`
+  handled `after_commit`/`after_rollback` but not the common `after_create_commit`,
+  `after_update_commit`, `after_destroy_commit`, `after_save_commit`, or `before_commit`
+  variants, so a method dispatched only through one of those (e.g.
+  `after_create_commit :emit_created_event`) was reported dead. They take symbol method names
+  exactly like the callbacks already handled, so they now emit method references too.
 - **Classifier no longer mislabels referenced namespaced classes/constants as `safe_delete`** —
   `rg --with-filename -o` emits `path:matched`, and the matched token for a compactly-defined
   class/module is the fully-qualified constant (`A::B::C`), which itself contains `::`. The
