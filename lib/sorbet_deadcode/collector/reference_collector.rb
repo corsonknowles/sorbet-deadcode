@@ -80,6 +80,7 @@ module SorbetDeadcode
         skip_before_action
         before_enqueue after_enqueue around_enqueue
         before_perform after_perform around_perform
+        helper_method
       ].to_set.freeze
 
       # Rails validation/callback conditional options whose value is a method name (or array of
@@ -246,10 +247,17 @@ module SorbetDeadcode
           collect_graphql_references(node, location, method_name: name)
           super
           return
+        elsif name == "rescue_from" && node.receiver.nil? && node.arguments
+          # `rescue_from SomeError, with: :handler` dispatches to the `with:` method when the
+          # error is raised. (Positional args are error constants, handled as normal constant refs.)
+          collect_rescue_from_references(node, location)
+          super
+          return
         elsif VALIDATOR_DSL_METHODS.include?(name) && node.receiver.nil? && node.arguments
           # ActiveModel/Rails validator DSL: `validate :check_something` calls the
           # named method via send when running validations. Collect each symbol arg
-          # as a method reference so the target is never reported dead.
+          # as a method reference so the target is never reported dead. Also covers
+          # `helper_method :foo` (exposed to views) and controller/job callbacks.
           collect_validator_references(node, location)
           super
           return
@@ -638,6 +646,21 @@ module SorbetDeadcode
             location: location,
             kind: :method_prefix,
           )
+        end
+      end
+
+      # `rescue_from Error, with: :handler` — the `with:` value is dispatched when the error is
+      # raised. Positional args are error constants (kept alive by the normal constant-ref pass).
+      def collect_rescue_from_references(node, location)
+        node.arguments.arguments.each do |arg|
+          next unless arg.is_a?(Prism::KeywordHashNode)
+
+          arg.elements.each do |assoc|
+            next unless assoc.is_a?(Prism::AssocNode)
+            next unless assoc.key.slice.delete_suffix(":") == "with"
+
+            collect_symbol_or_array(assoc.value, location)
+          end
         end
       end
 

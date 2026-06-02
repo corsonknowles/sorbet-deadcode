@@ -544,6 +544,43 @@ module SorbetDeadcode
         assert_includes names, "guard?"
       end
 
+      def test_helper_method_emits_method_references
+        refs = collect(<<~RUBY)
+          class UsersController < ApplicationController
+            helper_method :current_user, :logged_in?
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "current_user"
+        assert_includes names, "logged_in?"
+      end
+
+      def test_rescue_from_with_option_emits_method_reference
+        # Covers: positional error constant (non-hash arg), the `with:` key, a non-`with` key
+        # (status:), and a double-splat (non-AssocNode) in the options hash.
+        refs = collect(<<~RUBY)
+          class UsersController < ApplicationController
+            rescue_from ActiveRecord::RecordNotFound, status: :ignored, with: :render_not_found, **shared
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "render_not_found"
+        refute_includes names, "ignored" # non-with option value is not a method
+      end
+
+      def test_rescue_from_block_form_emits_no_method_reference
+        refs = collect(<<~RUBY)
+          class UsersController < ApplicationController
+            rescue_from(StandardError) { |e| log(e) }
+          end
+        RUBY
+
+        # block form has no `with:` symbol; nothing spurious emitted
+        refute_includes refs.select { |r| r.kind == :method }.map(&:name), "with"
+      end
+
       def test_transactional_commit_callbacks_emit_method_references
         refs = collect(<<~RUBY)
           class Model

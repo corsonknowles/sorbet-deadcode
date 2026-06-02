@@ -38,8 +38,8 @@ module SorbetDeadcode
       end
 
       def test_extracts_method_from_code_tag
-        write("app/views/show.erb", "<% helper_method(thing) %>\n")
-        assert_includes method_names, "helper_method"
+        write("app/views/show.erb", "<% render_widget(thing) %>\n")
+        assert_includes method_names, "render_widget"
       end
 
       def test_handles_blocks_spanning_multiple_tags

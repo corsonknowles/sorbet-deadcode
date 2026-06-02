@@ -24,6 +24,12 @@
   matching the bare `permit` name can only keep a setter alive.
 
 ### Fixed
+- **Controller `rescue_from`/`helper_method` targets are recognized** (#102) — `rescue_from Err,
+  with: :handler` dispatches to `handler` on error, and `helper_method :foo` exposes `foo` to
+  views; both target methods had no Ruby call site and were reported dead. They now emit method
+  references. (Routed controller actions are already kept alive by the route scanner — so unlike
+  spoom's blanket "ignore every controller method", a genuinely-dead non-routed controller method
+  is still found.)
 - **ActiveJob/Sidekiq job methods are kept alive, scoped to job classes** (#101) — the framework
   invokes `perform` (and `build_enumerator`/`each_iteration` on iteration jobs) by convention.
   A class detected as a job (superclass `ApplicationJob`/`ApplicationWorker`/`ActiveJob::Base`, or
