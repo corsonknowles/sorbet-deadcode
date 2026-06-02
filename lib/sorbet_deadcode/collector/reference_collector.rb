@@ -163,6 +163,12 @@ module SorbetDeadcode
         # the `foo=` setter; emit those writer references so set-only attributes aren't dead.
         collect_mass_assignment_references(node, location) if MASS_ASSIGNMENT_METHODS.include?(name)
 
+        # Strong-params `params.permit(:foo, bar: [])` whitelists attributes that are then
+        # mass-assigned (`record.assign_attributes(permitted)`); the attribute names appear
+        # only as permit keys, so emit `foo=`/`bar=` writer references to keep those setters
+        # alive. Conservative: matching the bare `permit` name can only keep a setter alive.
+        collect_permit_references(node, location) if name == "permit"
+
         # Resolve dispatch over a finite symbol list, e.g. `[:a, :b].each { |m| send(m) }`
         # or `METHODS.each { |m| send(m) }`. Bind the block param to the resolved symbol
         # list while visiting the block so the send(m) inside emits concrete references.
@@ -617,6 +623,53 @@ module SorbetDeadcode
             @references << Reference.new(name: "#{key.unescaped}=", location: location, kind: :method)
           end
         end
+      end
+
+      # Emit `key=` writer references for the permitted attributes of a strong-params
+      # `permit` call. Top-level positional symbols (`permit(:foo)` => `foo=`) and every
+      # symbol hash key, at any nesting depth (`permit(apps: [{ category_slugs: [] }])` =>
+      # `apps=`, `category_slugs=`), name setters invoked by the eventual mass-assignment.
+      # Nesting matters because Rails permits collections as `key: [{ nested_key: [] }]`.
+      # Bare symbols inside a value array (`baz: [:x]`) name nested scalar params rather
+      # than setters, so they're intentionally not emitted.
+      def collect_permit_references(node, location)
+        return unless node.arguments
+
+        node.arguments.arguments.each do |arg|
+          case arg
+          when Prism::SymbolNode
+            emit_writer_reference(arg.unescaped, location)
+          when Prism::KeywordHashNode, Prism::HashNode
+            collect_permit_hash_keys(arg, location)
+          end
+        end
+      end
+
+      # Emit `key=` for each symbol key of a permit hash, then recurse into its values to
+      # reach hashes nested inside arrays (`key: [{ nested: [] }]`).
+      def collect_permit_hash_keys(hash_node, location)
+        hash_node.elements.each do |assoc|
+          next unless assoc.is_a?(Prism::AssocNode)
+
+          key = assoc.key
+          emit_writer_reference(key.unescaped, location) if key.is_a?(Prism::SymbolNode)
+          collect_permit_nested(assoc.value, location)
+        end
+      end
+
+      # Recurse through a permit value: descend into nested hashes (emitting their keys)
+      # and walk arrays to find hashes. Bare array-element symbols are left alone.
+      def collect_permit_nested(node, location)
+        case node
+        when Prism::KeywordHashNode, Prism::HashNode
+          collect_permit_hash_keys(node, location)
+        when Prism::ArrayNode
+          node.elements.each { |el| collect_permit_nested(el, location) }
+        end
+      end
+
+      def emit_writer_reference(name, location)
+        @references << Reference.new(name: "#{name}=", location: location, kind: :method)
       end
 
       # Extract the leading literal text of an interpolated string/symbol, e.g.
