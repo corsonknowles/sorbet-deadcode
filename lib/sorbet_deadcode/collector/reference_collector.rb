@@ -176,6 +176,17 @@ module SorbetDeadcode
           end
         end
 
+        if migration_class?(node)
+          # ActiveRecord migrations are run by the migration framework via their version/filename,
+          # not by any constant/method reference. Keep the whole class (change/up/down + helpers).
+          @references << Reference.new(name: current_namespace, location: location, kind: :dynamic_namespace)
+        end
+
+        if each_validator_class?(node)
+          # ActiveModel::EachValidator subclasses' `validate_each` is invoked by the framework.
+          @references << Reference.new(name: "validate_each", location: location, kind: :method, receiver_type: current_namespace)
+        end
+
         if minitest_test_class?(node)
           # Minitest runs `test_*` methods and setup/teardown hooks by reflection. Keep the
           # test_* family alive via a prefix, and the lifecycle hooks owner-typed to this class.
@@ -756,6 +767,17 @@ module SorbetDeadcode
         return unless predicate.is_a?(Prism::SymbolNode)
 
         @references << Reference.new(name: predicate.unescaped, location: location, kind: :method)
+      end
+
+      # An ActiveRecord migration class (`< ActiveRecord::Migration[7.1]`).
+      def migration_class?(class_node)
+        class_node.superclass&.slice&.include?("ActiveRecord::Migration") || false
+      end
+
+      # An ActiveModel::EachValidator subclass (`< ActiveModel::EachValidator`, or an app
+      # `*EachValidator` base) — its `validate_each` is invoked by the validation framework.
+      def each_validator_class?(class_node)
+        class_node.superclass&.slice&.end_with?("EachValidator") || false
       end
 
       # A Minitest / ActiveSupport::TestCase test class — by superclass or a `*Test` name.

@@ -712,6 +712,44 @@ module SorbetDeadcode
         refute_includes analyzer.dead_definitions.map(&:name), "closed?"
       end
 
+      def test_migration_class_and_methods_kept_alive
+        analyzer = analyze_source(<<~RUBY)
+          class CreateUsers < ActiveRecord::Migration[7.1]
+            def change
+              create_table(:users)
+            end
+          end
+        RUBY
+
+        dead = analyzer.dead_definitions.map(&:name)
+        refute_includes dead, "change"
+        refute_includes dead, "CreateUsers"
+      end
+
+      def test_each_validator_validate_each_kept_alive
+        analyzer = analyze_source(<<~RUBY)
+          class EmailFormatValidator < ActiveModel::EachValidator
+            def validate_each(record, attribute, value)
+              record.errors.add(attribute) unless value.include?("@")
+            end
+          end
+        RUBY
+
+        refute_includes analyzer.dead_definitions.map(&:name), "validate_each"
+      end
+
+      def test_change_on_non_migration_class_is_still_dead
+        analyzer = analyze_source(<<~RUBY)
+          class PlainThing
+            def change
+              @x = 1
+            end
+          end
+        RUBY
+
+        assert_includes analyzer.dead_definitions.map(&:name), "change"
+      end
+
       def test_framework_convention_hook_is_never_dead
         # sidekiq_unique_context is invoked by Sidekiq by name (convention), so it has no
         # explicit Ruby call site but must not be reported dead.

@@ -24,6 +24,11 @@
   matching the bare `permit` name can only keep a setter alive.
 
 ### Fixed
+- **Migration and EachValidator framework methods recognized** (#107) — `ActiveRecord::Migration`
+  subclasses are run by the migration framework via version/filename (no constant ref), so the
+  class and its `change`/`up`/`down` are kept alive; and an `ActiveModel::EachValidator` subclass's
+  `validate_each` (invoked by the validation framework) is kept alive (owner-scoped, so a `change`
+  on a non-migration class is still analyzed).
 - **Minitest test methods and predicate assertions recognized** (#106) — in a Minitest /
   `ActiveSupport::TestCase` test class (by superclass or a `*Test` name), `test_*` methods and the
   setup/teardown/`*_all`/around lifecycle hooks are kept alive, and `assert_predicate obj, :foo?` /
