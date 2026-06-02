@@ -50,13 +50,13 @@ jobs:
   spoom-integration:
     name: Spoom integration
     runs-on: ubuntu-latest
+    # Install the optional :spoom group (via BUNDLE_WITH, honored by setup-ruby's bundle install)
+    # so the live Spoom::Runner integration test runs instead of skipping. This lane catches drift
+    # in spoom's internal API up front; the default test lanes stay spoom-free.
+    env:
+      BUNDLE_WITH: spoom
     steps:
       - uses: actions/checkout@v4
-
-      # Install the optional :spoom group so the live Spoom::Runner integration test runs
-      # (it skips when spoom is absent). This lane catches drift in spoom's internal API.
-      - name: Enable the optional spoom group
-        run: bundle config set --local with spoom
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
