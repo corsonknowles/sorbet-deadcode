@@ -32,6 +32,14 @@ module SorbetDeadcode
         aasm_event event
       ].to_set.freeze
 
+      # AASM event option keys whose value is a method name (or array of them) dispatched
+      # as a callback/guard during a transition: `event :activate, after: [:notify], guard: :can?`.
+      AASM_CALLBACK_KEYS = %w[
+        after before guard unless success error ensure
+        after_commit after_rollback on_transition
+        before_transaction after_transaction
+      ].to_set.freeze
+
       # GraphQL-ruby DSL patterns that reference Ruby methods by symbol.
       # `builds :foo` → calls `build_foo`
       # `argument :x, prepare: :method` → calls `method`
@@ -507,7 +515,7 @@ module SorbetDeadcode
               next unless assoc.is_a?(Prism::AssocNode)
 
               key = assoc.key.slice.delete_suffix(":")
-              next unless %w[after before guard after_commit after_rollback on_transition error].include?(key)
+              next unless AASM_CALLBACK_KEYS.include?(key)
 
               collect_symbol_or_array(assoc.value, location)
             end

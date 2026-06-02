@@ -199,6 +199,26 @@ module SorbetDeadcode
         assert_includes refs.select { |r| r.kind == :method }.map(&:name), "can_activate?"
       end
 
+      def test_aasm_event_transaction_and_other_callbacks_emit_references
+        refs = collect(<<~RUBY)
+          class Order
+            event :send_to_remove,
+                  before_transaction: :set_remove_date,
+                  after_transaction: :finalize_removal,
+                  unless: :skip_removal?,
+                  success: :notify_removed,
+                  ensure: :cleanup
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "set_remove_date"
+        assert_includes names, "finalize_removal"
+        assert_includes names, "skip_removal?"
+        assert_includes names, "notify_removed"
+        assert_includes names, "cleanup"
+      end
+
       def test_aasm_error_on_all_events_emits_reference
         refs = collect(<<~RUBY)
           class Order
