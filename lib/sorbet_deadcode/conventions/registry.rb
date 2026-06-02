@@ -11,6 +11,46 @@ module SorbetDeadcode
       CONFIG_KEYS = %i[name superclass includes name_suffix path_includes
                        keep_methods keep_prefixes keep_constants keep_namespace].freeze
 
+      # Recognized send-handler option keys (used when loading from YAML/config).
+      SEND_HANDLER_CONFIG_KEYS = %i[name methods positional conditional_options option_constants].freeze
+
+      # Rails/ActiveModel/ActiveJob/controller callbacks whose positional symbol args are METHOD
+      # names dispatched at callback time (`before_save :touch`), with `if:`/`unless:` guard methods.
+      CALLBACK_DSL_METHODS = %w[
+        validate
+        before_validation after_validation
+        before_create after_create around_create
+        before_update after_update around_update
+        before_save after_save around_save
+        before_destroy after_destroy around_destroy
+        after_commit after_rollback before_commit
+        after_create_commit after_update_commit after_destroy_commit after_save_commit
+        after_initialize after_find after_touch
+        before_action after_action around_action
+        prepend_before_action append_before_action skip_before_action
+        prepend_after_action append_after_action skip_after_action
+        prepend_around_action append_around_action skip_around_action
+        before_enqueue after_enqueue around_enqueue
+        before_perform after_perform around_perform
+        helper_method
+        setup teardown
+      ].freeze
+
+      # `validates`-family DSL: positional args are ATTRIBUTE names (not methods); option keys map to
+      # validator constants; `if:`/`unless:` are guard methods.
+      VALIDATES_DSL_METHODS = %w[validates validates! validates_each].freeze
+
+      # Built-in send-handlers (the `on_send` DSL half). Mirrors the previously-inlined validator
+      # handling exactly; projects append their own via .sorbet-deadcode.yml `send_handlers:`.
+      def self.builtin_send_handlers
+        [
+          SendHandler.new(name: "rails_callbacks", methods: CALLBACK_DSL_METHODS,
+                          positional: :methods, conditional_options: true),
+          SendHandler.new(name: "validates", methods: VALIDATES_DSL_METHODS,
+                          positional: :attributes, conditional_options: true, option_constants: true),
+        ].freeze
+      end
+
       # Built-in conventions. Each scopes a generic, framework-invoked name set to the classes that
       # actually use it (by superclass / included module / name), so the same name on an unrelated
       # class stays subject to analysis. Patterns mirror the previously-inlined collector checks.
@@ -73,30 +113,43 @@ module SorbetDeadcode
         ].freeze
       end
 
-      # @return [Registry] a fresh registry preloaded with the built-in conventions.
+      # @return [Registry] a fresh registry preloaded with the built-in conventions + send-handlers.
       def self.default
-        new(builtins)
+        new(builtins, builtin_send_handlers)
       end
 
-      # Build a registry from a parsed config hash (e.g. YAML). Custom conventions are appended to
-      # the built-ins. Unknown keys are ignored so configs stay forward-compatible.
+      # Build a registry from a parsed config hash (e.g. YAML). Custom conventions and send-handlers
+      # are appended to the built-ins. Unknown keys are ignored so configs stay forward-compatible.
       def self.from_config(config)
         registry = default
         Array(config && config["conventions"]).each do |entry|
-          attrs = CONFIG_KEYS.each_with_object({}) do |key, hash|
-            value = entry[key.to_s]
-            hash[key] = value unless value.nil?
-          end
-          registry.register(**attrs)
+          registry.register(**config_attrs(entry, CONFIG_KEYS))
+        end
+        Array(config && config["send_handlers"]).each do |entry|
+          attrs = config_attrs(entry, SEND_HANDLER_CONFIG_KEYS)
+          attrs[:positional] = attrs[:positional].to_sym if attrs[:positional]
+          registry.register_send_handler(**attrs)
         end
         registry
+      end
+
+      # Pick the listed keys out of a (string-keyed) config entry into a symbol-keyed attrs hash.
+      def self.config_attrs(entry, keys)
+        keys.each_with_object({}) do |key, hash|
+          value = entry[key.to_s]
+          hash[key] = value unless value.nil?
+        end
       end
 
       # @return [Array<Convention>] the registered conventions (built-ins + custom), in order.
       attr_reader :conventions
 
-      def initialize(conventions = [])
+      # @return [Array<SendHandler>] the registered send-handlers (built-ins + custom), in order.
+      attr_reader :send_handlers
+
+      def initialize(conventions = [], send_handlers = [])
         @conventions = conventions.to_a
+        @send_handlers = send_handlers.to_a
       end
 
       # Register a custom convention — pass a Convention or its keyword attributes.
@@ -105,6 +158,19 @@ module SorbetDeadcode
         @conventions += convention
         @conventions << Convention.new(**attrs) unless attrs.empty?
         self
+      end
+
+      # Register a custom send-handler — pass a SendHandler or its keyword attributes.
+      # @return [self] for chaining.
+      def register_send_handler(*handler, **attrs)
+        @send_handlers += handler
+        @send_handlers << SendHandler.new(**attrs) unless attrs.empty?
+        self
+      end
+
+      # @return [SendHandler, nil] the first send-handler matching a receiver-less message, or nil.
+      def send_handler_for(message)
+        @send_handlers.find { |handler| handler.matches?(message) }
       end
 
       # @return [Array<Convention>] conventions whose matcher accepts this class.

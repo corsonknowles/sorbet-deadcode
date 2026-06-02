@@ -1016,6 +1016,52 @@ module SorbetDeadcode
         assert_includes constants, "NoFooCop::RESTRICT_ON_SEND"
       end
 
+      def test_custom_send_handler_keeps_symbol_arg_methods_alive
+        registry = Conventions::Registry.default.register_send_handler(
+          name: "track", methods: ["track_event"], conditional_options: true
+        )
+        refs = collect(<<~RUBY, conventions: registry)
+          class Orders
+            track_event :handle_order, if: :enabled?
+          end
+        RUBY
+
+        methods = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes methods, "handle_order", "positional symbol is a method reference"
+        assert_includes methods, "enabled?", "if: guard is a method reference"
+      end
+
+      def test_custom_send_handler_with_attributes_positional_ignores_args_and_disabled_options
+        # positional: :attributes and (default) conditional_options: false / option_constants: false
+        # → neither the positional args nor the if:/option keys produce references.
+        registry = Conventions::Registry.default.register_send_handler(
+          name: "audited", methods: ["audited_columns"], positional: :attributes
+        )
+        refs = collect(<<~RUBY, conventions: registry)
+          class Account
+            audited_columns :balance, :status, if: :tracked?, custom_rule: true
+          end
+        RUBY
+
+        names = refs.map(&:name)
+        refute_includes names, "balance"
+        refute_includes names, "tracked?", "conditional_options disabled → if: is not a method ref"
+        refute_includes names, "CustomRuleValidator", "option_constants disabled → no validator const"
+      end
+
+      def test_callback_handler_ignores_non_conditional_options
+        # rails_callbacks has conditional_options: true but option_constants: false, so a plain
+        # option key like `on:` produces no validator-constant reference.
+        refs = collect(<<~RUBY)
+          class Model
+            before_save :touch_timestamp, on: :create
+          end
+        RUBY
+
+        assert_includes refs.select { |r| r.kind == :method }.map(&:name), "touch_timestamp"
+        refute_includes refs.select { |r| r.kind == :constant }.map(&:name), "OnValidator"
+      end
+
       def test_non_visitor_subclass_does_not_emit_visit_prefix
         refs = collect(<<~RUBY)
           class Transformer < Prism::Mutation

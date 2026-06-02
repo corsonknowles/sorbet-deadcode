@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### Added
+- **Registerable send-handler DSL plugins** (#36) — the receiver-less DSL handlers (`validate` /
+  `validates` / Rails+controller+job callbacks) are now expressed as `Conventions::SendHandler`
+  objects in the registry instead of a hard-coded name list + branch in `ReferenceCollector`.
+  Projects can register their own in-house DSL via `.sorbet-deadcode.yml`, so
+  `track_event :handle_order, if: :enabled?` keeps `handle_order`/`enabled?` alive without patching
+  the gem:
+
+  ```yaml
+  send_handlers:
+    - name: event_tracking
+      methods: [track_event, log_event]
+      positional: methods          # symbol args are method names (default); use `attributes` for column names
+      conditional_options: true    # if:/unless: values are guard-method refs
+  ```
+
+  `--show-plugins` now lists send-handlers alongside conventions. Behavior for the built-ins is
+  unchanged (guarded by the existing validator/callback specs).
+
 ### Changed
 - **`mailer_preview` detection moved into the convention registry** (#97 follow-up) — the last
   bespoke base-class detection (`ActionMailer::Preview` classes) is now expressed as two built-in

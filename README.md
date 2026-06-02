@@ -248,8 +248,19 @@ ends with `name_suffix` (optionally gated by `path_includes`). Keep directives: 
 (owner-scoped names), `keep_prefixes` (e.g. `on_`), `keep_constants` (e.g. a cop's `MSG`), or
 `keep_namespace` (the whole class).
 
-The complete list of built-in framework/DSL conventions — and how it maps to spoom's plugins — is
-documented in [`docs/dsl-parity.md`](docs/dsl-parity.md).
+For receiver-less DSL methods (callbacks/validations and your own in-house DSLs), register a
+**send-handler** so a call's symbol arguments are kept alive:
+
+```yaml
+send_handlers:
+  - name: event_tracking
+    methods: [track_event, log_event]   # `track_event :handle_order` keeps `handle_order` alive
+    positional: methods                 # symbol args are method names (default); `attributes` = column names
+    conditional_options: true           # if:/unless: values are guard-method references
+```
+
+The complete list of built-in framework/DSL conventions and send-handlers — and how it maps to
+spoom's plugins — is documented in [`docs/dsl-parity.md`](docs/dsl-parity.md).
 
 ### Introspection & sorting
 

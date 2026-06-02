@@ -57,34 +57,6 @@ module SorbetDeadcode
       # Reflection methods that look up a constant by symbol/string name (Module#const_get etc.).
       CONSTANT_REFLECTION_METHODS = %w[const_get const_defined? const_source_location].to_set.freeze
 
-      # ActiveModel/Rails DSL methods that take symbol names of methods to call.
-      # `validate :method_name` dispatches via send(method_name) during validation.
-      # `before_validation/after_validation :method` similarly dispatches.
-      VALIDATOR_DSL_METHODS = %w[
-        validate validates validates! validates_each
-        before_validation after_validation
-        before_create after_create around_create
-        before_update after_update around_update
-        before_save after_save around_save
-        before_destroy after_destroy around_destroy
-        after_commit after_rollback before_commit
-        after_create_commit after_update_commit after_destroy_commit after_save_commit
-        after_initialize after_find after_touch
-        before_action after_action around_action
-        prepend_before_action append_before_action skip_before_action
-        prepend_after_action append_after_action skip_after_action
-        prepend_around_action append_around_action skip_around_action
-        before_enqueue after_enqueue around_enqueue
-        before_perform after_perform around_perform
-        helper_method
-        setup teardown
-      ].to_set.freeze
-
-      # `validates`-family DSL methods whose positional arguments are ATTRIBUTE names (not method
-      # names): `validates :email, presence: true`. Their option keys map to validator constants
-      # and their if:/unless: values are method names (handled in collect_validator_references).
-      VALIDATES_METHODS = %w[validates validates! validates_each].to_set.freeze
-
       # Rails validation/callback conditional options whose value is a method name (or array of
       # them) invoked at validation/callback time: `validate :x, if: :ready?`, `unless: :skip?`.
       VALIDATOR_CONDITIONAL_KEYS = %w[if unless].to_set.freeze
@@ -241,12 +213,10 @@ module SorbetDeadcode
           collect_rescue_from_references(node, location)
           super
           return
-        elsif VALIDATOR_DSL_METHODS.include?(name) && node.receiver.nil? && node.arguments
-          # ActiveModel/Rails validator DSL: `validate :check_something` calls the
-          # named method via send when running validations. Collect each symbol arg
-          # as a method reference so the target is never reported dead. Also covers
-          # `helper_method :foo` (exposed to views) and controller/job callbacks.
-          collect_validator_references(node, location)
+        elsif node.receiver.nil? && node.arguments && (handler = @conventions.send_handler_for(name))
+          # Receiver-less DSL send (callbacks, validations, or a project-registered in-house DSL):
+          # reference the methods/constants named in its arguments. See Conventions::SendHandler.
+          apply_send_handler(handler, node, location)
           super
           return
         elsif node.receiver
@@ -652,30 +622,30 @@ module SorbetDeadcode
         end
       end
 
-      def collect_validator_references(node, location)
-        # `validates :col, ...` — positional args are attribute names, not methods. For
-        # `validate`/callbacks the positional symbols are method names (the existing behavior).
-        validates = VALIDATES_METHODS.include?(node.name.to_s)
-        positional_are_methods = !validates
-
+      # Emit the references a matched send-handler prescribes for a receiver-less DSL call:
+      # positional symbols (as methods unless the handler marks them attributes), `if:`/`unless:`
+      # guard methods, and (for the validates family) `<Camelized>Validator` option constants.
+      def apply_send_handler(handler, node, location)
         node.arguments.arguments.each do |arg|
           case arg
           when Prism::SymbolNode
-            @references << Reference.new(name: arg.unescaped, location: location, kind: :method) if positional_are_methods
+            @references << Reference.new(name: arg.unescaped, location: location, kind: :method) if handler.positional_methods?
           when Prism::KeywordHashNode, Prism::HashNode
-            arg.elements.each do |assoc|
-              next unless assoc.is_a?(Prism::AssocNode)
-
-              key = assoc.key.slice.delete_suffix(":")
-              if VALIDATOR_CONDITIONAL_KEYS.include?(key)
-                collect_symbol_or_array(assoc.value, location)
-              elsif validates && !VALIDATES_STANDARD_OPTIONS.include?(key)
-                # `validates :x, strong_password: true` resolves to a `StrongPasswordValidator`
-                # class instantiated by ActiveModel; keep that validator constant alive.
-                @references << Reference.new(name: "#{camelize(key)}Validator", location: location, kind: :constant)
-              end
-            end
+            arg.elements.each { |assoc| apply_send_handler_option(handler, assoc, location) }
           end
+        end
+      end
+
+      def apply_send_handler_option(handler, assoc, location)
+        return unless assoc.is_a?(Prism::AssocNode)
+
+        key = assoc.key.slice.delete_suffix(":")
+        if VALIDATOR_CONDITIONAL_KEYS.include?(key)
+          collect_symbol_or_array(assoc.value, location) if handler.conditional_options?
+        elsif handler.option_constants? && !VALIDATES_STANDARD_OPTIONS.include?(key)
+          # `validates :x, strong_password: true` resolves to a `StrongPasswordValidator` class
+          # instantiated by ActiveModel; keep that validator constant alive.
+          @references << Reference.new(name: "#{camelize(key)}Validator", location: location, kind: :constant)
         end
       end
 
