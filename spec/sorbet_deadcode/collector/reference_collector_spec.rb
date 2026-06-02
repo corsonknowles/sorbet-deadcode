@@ -239,6 +239,42 @@ module SorbetDeadcode
         assert_includes refs.select { |r| r.kind == :method }.map(&:name), "build_order"
       end
 
+      def test_graphql_field_emits_same_named_resolver_method
+        refs = collect(<<~RUBY)
+          class MemberPayroll < BaseObject
+            field :on_leave_during_pay_period, Boolean, null: false
+            field :member_payrolls, MemberPayrollType, connection: true, null: false
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "on_leave_during_pay_period"
+        assert_includes names, "member_payrolls"
+      end
+
+      def test_graphql_field_resolver_method_option_emits_reference
+        refs = collect(<<~RUBY)
+          class Obj < BaseObject
+            field :foo, String, null: true, resolver_method: :compute_foo
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "foo"          # the field's own default resolver
+        assert_includes names, "compute_foo"  # the explicit override
+      end
+
+      def test_graphql_argument_does_not_emit_bare_name_as_method
+        refs = collect(<<~RUBY)
+          class M < BaseMutation
+            argument :assignee, String, required: true
+          end
+        RUBY
+
+        # arguments are passed as kwargs, not resolved by a same-named method
+        refute_includes refs.select { |r| r.kind == :method }.map(&:name), "assignee"
+      end
+
       def test_graphql_argument_prepare_emits_reference
         refs = collect(<<~RUBY)
           class CreateOrder < BaseMutation

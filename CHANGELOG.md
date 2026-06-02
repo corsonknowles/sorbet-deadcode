@@ -24,6 +24,14 @@
   matching the bare `permit` name can only keep a setter alive.
 
 ### Fixed
+- **GraphQL field resolver methods are no longer reported dead** (#92) — in a code-first
+  graphql-ruby schema a `field :foo` is resolved by calling a same-named method `foo` on the
+  type when one is defined, but `collect_graphql_references` only emitted references for a
+  field's `prepare:`/`method:`/`loads:` options, never the field's own name — so resolver
+  methods like `def member_payrolls` (backing `field :member_payrolls`) were reported
+  `safe_delete`. A `field :foo` now emits a `foo` method reference, and an explicit
+  `resolver_method: :bar` emits `bar` too. Arguments (passed as kwargs, not resolved by a
+  same-named method) are unchanged.
 - **Inline constants in a collection literal are handled correctly** (#88) — a constant assigned
   a collection that inline-assigns other constants (`PARENT = [CHILD = 'a'].freeze`, including
   through a `T.let([...], T::Array[...])` wrapper) is a single syntactic unit: Ruby evaluates the
