@@ -177,7 +177,22 @@ sorbet-deadcode --report tmp/deadcode.json --classify
 
 # Cross-compare the cached index against another tool's index (e.g. Spoom)
 sorbet-deadcode --report tmp/deadcode.json --intersect tmp/spoom.json
+
+# Or intersect with Spoom directly, in one pass — no intermediate file
+sorbet-deadcode app/ --spoom
 ```
+
+### Intersecting with Spoom (`--spoom`)
+
+[Spoom](https://github.com/Shopify/spoom) and `sorbet-deadcode` are complementary: Spoom is
+name-based and broad (it blanket-keeps whole framework categories alive — fewer false positives,
+more false *negatives*), while `sorbet-deadcode` is type-aware and precise. Their **intersection**
+— definitions both tools call dead — is the highest-confidence set.
+
+`--spoom` runs Spoom's dead-code engine (via its Ruby API) on the same paths and keeps only the
+candidates that appear in both, keyed on `[full_name, kind]` (Spoom reports the same `kind`
+vocabulary). Spoom is an **optional dependency** — only required when you pass `--spoom`
+(`gem install spoom` or add it to your Gemfile).
 
 `--report` skips analysis and verification (the index is already verified) but still
 flows through classification and confidence scoring, so the index → classify workflow

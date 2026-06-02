@@ -46,6 +46,7 @@ options = {
   plain: false,
   report_dynamic_dispatch: false,
   report_non_ruby: false,
+  spoom: false,
 }
 
 OptionParser.new do |opts|
@@ -127,6 +128,12 @@ OptionParser.new do |opts|
     "Only report definitions that appear in BOTH this run AND OTHER_INDEX.",
     "Use to cross-compare sorbet-deadcode results with Spoom or another run.") do |f|
     options[:intersect_index] = f
+  end
+
+  opts.on("--spoom",
+    "Cross-check against spoom: keep only candidates spoom also reports dead.",
+    "Runs spoom's dead-code analysis on the same paths via its API (requires the spoom gem).") do
+    options[:spoom] = true
   end
 
   opts.on("--confidence", "Show confidence tier (high/medium/low) for each candidate.") do
@@ -315,6 +322,18 @@ if !from_index && options[:intersect_index]
               .intersect(other)
               .dead_definitions
   $stderr.puts "Intersection: #{results.size} candidates appear in both indexes."
+end
+
+# --spoom: run spoom's dead-code analysis on the same paths (via its Ruby API) and keep only
+# the candidates both tools agree are dead — the highest-confidence set, with no intermediate file.
+if !from_index && options[:spoom]
+  spoom_index = SorbetDeadcode::Spoom::Runner.dead_index(
+    options[:paths], project_root: options[:project_root], exclude_paths: options[:exclude_paths],
+  )
+  results = SorbetDeadcode::Index.new(dead_definitions: results, paths: options[:paths])
+              .intersect(spoom_index)
+              .dead_definitions
+  $stderr.puts "Spoom intersection: #{results.size} candidates also reported dead by spoom."
 end
 
 if results.empty?

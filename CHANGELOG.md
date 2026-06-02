@@ -23,6 +23,14 @@
   (`baz: [:x]`) name nested scalar params, not setters, so they're left alone. Conservative:
   matching the bare `permit` name can only keep a setter alive.
 
+### Added
+- **`--spoom`: intersect with Spoom's dead set in one pass** (#99) — runs Shopify's
+  [spoom](https://github.com/Shopify/spoom) dead-code engine via its Ruby API on the same paths and
+  keeps only candidates both tools report dead (the highest-confidence set), keyed on
+  `[full_name, kind]` — no intermediate file or fragile text parsing. spoom is an optional
+  dependency, required lazily only when `--spoom` is passed. The pure spoom-row→Index mapping
+  (`Spoom::Converter`) is unit-tested; the live runner (`Spoom::Runner`) mirrors spoom's own CLI flow.
+
 ### Fixed
 - **Migration and EachValidator framework methods recognized** (#107) — `ActiveRecord::Migration`
   subclasses are run by the migration framework via version/filename (no constant ref), so the
