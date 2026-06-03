@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+- **Wrong-project-root guard** — the CLI now warns when analysis paths fall *outside* the resolved
+  project root. The classic trigger is running from inside a different git checkout than the target
+  (so the auto-detected git toplevel points at the wrong repo); reference verification (repo-wide
+  ripgrep) and the non-Ruby refiners then scan the wrong tree and report cross-referenced
+  definitions as dead — a silent, high-impact false-positive source. The new pure
+  `SorbetDeadcode::PathScope.paths_outside_root` helper detects it and the CLI surfaces it loudly
+  with remediation (run from inside the target repo, or pass `--project-root` / `--reference-root`).
+
 ### Fixed
 - **`--spoom` CLI flag was unusable** — a `--remove` help-text continuation line began with
   `--spoom`, which OptionParser silently registered as an *alias* of `--remove`, so `--spoom`
