@@ -266,6 +266,22 @@ if options[:project_root].nil?
   options[:project_root] = options[:isolated] ? "." : (git_toplevel || ".")
 end
 
+# Loud guard against a silent, high-impact misconfiguration: analyzing code that lives OUTSIDE
+# the project root used for reference verification (most commonly: running from inside a different
+# git checkout than the target, so the auto-detected git toplevel points at the wrong repo). When
+# that happens, ripgrep verification and the non-Ruby refiners scan the wrong tree and report
+# cross-referenced definitions as dead. Warn rather than abort: --isolated and bespoke layouts are
+# legitimate, but the user should know verification won't cover the analyzed code.
+outside_root = SorbetDeadcode::PathScope.paths_outside_root(options[:paths], options[:project_root])
+unless outside_root.empty?
+  $stderr.puts "[sorbet-deadcode] WARNING: analysis path(s) are OUTSIDE the project root used for"
+  $stderr.puts "[sorbet-deadcode]          reference verification (#{File.expand_path(options[:project_root])}):"
+  outside_root.each { |path| $stderr.puts "[sorbet-deadcode]            - #{path}" }
+  $stderr.puts "[sorbet-deadcode]          Cross-reference verification will MISS callers in the analyzed"
+  $stderr.puts "[sorbet-deadcode]          code and report live definitions as dead. Run from inside the"
+  $stderr.puts "[sorbet-deadcode]          target repository, or pass --project-root / --reference-root."
+end
+
 # Load framework conventions: an explicit --config, or a .sorbet-deadcode.yml at the project root
 # (skipped under --isolated). Custom conventions extend the built-ins (see Conventions::Registry).
 options[:conventions] = nil

@@ -3,6 +3,7 @@
 require "prism"
 
 require_relative "sorbet_deadcode/version"
+require_relative "sorbet_deadcode/path_scope"
 require_relative "sorbet_deadcode/ripgrep"
 require_relative "sorbet_deadcode/definition"
 require_relative "sorbet_deadcode/reference"
