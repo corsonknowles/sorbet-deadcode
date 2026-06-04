@@ -155,6 +155,32 @@ module SorbetDeadcode
         assert_includes names, "baz"
       end
 
+      # #129: `to: :reader` calls `reader` on self to get the delegation target, so the
+      # target reader (often an attr_reader) is a real reference and must not be reported dead.
+      def test_delegate_emits_method_reference_for_symbol_to_target
+        refs = collect(<<~RUBY)
+          class Foo
+            delegate :to_s, :flush, to: :writer
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "writer"
+      end
+
+      def test_delegate_with_constant_to_target_emits_no_method_reference
+        refs = collect(<<~RUBY)
+          class Foo
+            delegate :find, to: SomeRepository
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        refute_includes names, "SomeRepository"
+        # The constant itself is still tracked as a constant reference.
+        assert_includes refs.select { |r| r.kind == :constant }.map(&:name), "SomeRepository"
+      end
+
       def test_delegate_with_string_prefix_emits_prefixed_name
         refs = collect(<<~RUBY)
           class Foo

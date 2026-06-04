@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+- **`delegate ..., to: :reader` now counts as a reference to the target** (#129) — the collector
+  recorded the delegated method names and the `prefix:` option but ignored the `to:` target. A
+  method/`attr_reader` used *only* as a `delegate :foo, to: :reader` target (the reader is invoked at
+  runtime to obtain the delegation receiver) was therefore reported dead. The symbol form now emits a
+  method reference for the target; the string/constant forms (`to: "Klass"` / `to: SomeConst`) are
+  left to the normal constant handling.
+
 ### Added
 - **Wrong-project-root guard** — the CLI now warns when analysis paths fall *outside* the resolved
   project root. The classic trigger is running from inside a different git checkout than the target

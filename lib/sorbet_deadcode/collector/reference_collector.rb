@@ -470,19 +470,22 @@ module SorbetDeadcode
         end
       end
 
-      # `delegate :foo, :bar, to: :target` — foo= and bar are dispatched by ActiveSupport.
+      # `delegate :foo, :bar, to: :target` — foo/bar are dispatched by ActiveSupport, and
+      # `target` is invoked on `self` to obtain the receiver (so it's a reference too).
       # Optionally `prefix: true` or `prefix: :target` changes the generated name.
       def collect_delegate_references(node, location)
         prefix = nil
         node.arguments.arguments.each do |arg|
-          if arg.is_a?(Prism::KeywordHashNode)
-            arg.elements.each do |assoc|
-              next unless assoc.is_a?(Prism::AssocNode)
+          next unless arg.is_a?(Prism::KeywordHashNode)
 
-              key = assoc.key.slice.delete_suffix(":")
-              next unless key == "prefix"
+          arg.elements.each do |assoc|
+            next unless assoc.is_a?(Prism::AssocNode)
 
-              val = assoc.value
+            key = assoc.key.slice.delete_suffix(":")
+            val = assoc.value
+
+            case key
+            when "prefix"
               prefix = if val.is_a?(Prism::TrueNode)
                 # `prefix: true` → method name is inferred from :to value; we
                 # conservatively emit a method_prefix reference so all prefixed
@@ -490,6 +493,13 @@ module SorbetDeadcode
                 :true_prefix
               elsif val.is_a?(Prism::SymbolNode)
                 val.unescaped
+              end
+            when "to"
+              # `to: :reader` calls `reader` on `self` at load/runtime to get the delegation
+              # target — a real reference (commonly an attr_reader). Only the symbol form names
+              # a self method; `to: "Klass"`/`to: SomeConst` name a constant handled elsewhere.
+              if val.is_a?(Prism::SymbolNode)
+                @references << Reference.new(name: val.unescaped, location: location, kind: :method)
               end
             end
           end
