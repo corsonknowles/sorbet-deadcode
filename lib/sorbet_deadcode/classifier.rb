@@ -16,18 +16,21 @@ module SorbetDeadcode
       :external_reference_count, # occurrences outside the definition file
       :flags,                 # Array<Symbol> risk markers
       :suggested_action,      # :safe_delete / :delete_with_spec / :review / :keep
+      :added,                 # String|nil — introducing commit (with --history), else nil
       keyword_init: true,
     )
 
     # Matches files under spec/ or test/ directories, or *_spec.rb / *_test.rb.
     SPEC_PATH = %r{(?:^|/)(?:spec|test)/|_(?:spec|test)\.rb$}
 
-    def initialize(project_root:, exclude_paths: [], recent_within: nil)
+    def initialize(project_root:, exclude_paths: [], recent_within: nil, history: false)
       @project_root = File.expand_path(project_root)
       @exclude_paths = exclude_paths
       # When set (seconds), candidates whose definition line was introduced within the
       # window are flagged :recently_added and routed to review (issue #19).
       @recency = recent_within && Git::Recency.new(@project_root, recent_within)
+      # When enabled, annotate each result with the commit that introduced it (issue #135).
+      @history = history && Git::History.new(@project_root)
     end
 
     # @param candidates [Array<Definition>]
@@ -98,6 +101,7 @@ module SorbetDeadcode
         external_reference_count: external_count,
         flags: flags,
         suggested_action: action,
+        added: @history && @history.added(definition),
       )
     end
 
