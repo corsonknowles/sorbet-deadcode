@@ -320,5 +320,14 @@ module SorbetDeadcode
 
       assert_includes classify_one(definition).flags, :partial_accessor
     end
+
+    # #136: a definition the analyzer marked cascaded surfaces the flag.
+    def test_cascaded_flag_is_surfaced
+      path = write("app/foo.rb", "class Foo\n  def helper; end\nend\n")
+      definition = defn("helper", location: "#{path}:2")
+      definition.cascaded = true
+
+      assert_includes classify_one(definition).flags, :cascaded
+    end
   end
 end

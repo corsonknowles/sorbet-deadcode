@@ -55,11 +55,14 @@ module SorbetDeadcode
       DEFAULT_EXTENSIONS = ["rb"].freeze
 
       def initialize(paths:, exclude_paths: [], reference_paths: nil, dynamic_dispatch: :exclude,
-                     conventions: nil, extensions: nil)
+                     conventions: nil, extensions: nil, cascade: false)
         @paths = Array(paths)
         @exclude_paths = Array(exclude_paths)
         @reference_paths = reference_paths ? Array(reference_paths) : []
         @dynamic_dispatch = dynamic_dispatch
+        # When true, iterate liveness to a fixpoint: drop references that originate inside an
+        # already-dead method, recompute, and repeat — surfacing transitively-dead code (issue #136).
+        @cascade = cascade
         @extensions = Array(extensions).map { |ext| ext.to_s.delete_prefix(".") }.reject(&:empty?)
         @extensions = DEFAULT_EXTENSIONS if @extensions.empty?
         # Base-class-scoped framework conventions consulted by the ReferenceCollector. Defaults to
@@ -88,18 +91,66 @@ module SorbetDeadcode
       end
 
       def dead_definitions
-        ref_index = build_reference_index
+        dead = compute_dead(@references)
+        dead = cascade(dead) if @cascade
+        mark_partial_accessors(dead, @ref_index)
+        dead
+      end
+
+      # The dead set implied by a given reference list. Recomputed per cascade iteration with a
+      # shrinking reference set; stores @ref_index for downstream annotators (partial-accessor).
+      def compute_dead(references)
+        @ref_index = build_reference_index(references)
         # A namespace that lexically contains a live definition must not be reported dead —
         # removing it would remove the live member. Computed from "directly alive" members
         # (everything except this containment rule), so it's a single non-recursive pass.
-        @namespaces_with_live_members = compute_namespaces_with_live_members(ref_index)
+        @namespaces_with_live_members = compute_namespaces_with_live_members(@ref_index)
         # An inline-constant cluster (`PARENT = [CHILD = ...]`) is one syntactic unit: if any
         # member is referenced, none can be deleted without rewriting the literal, so keep them
         # all alive. Computed once, up front.
-        @alive_inline_constants = compute_alive_inline_constants(ref_index)
-        dead = @definitions.reject { |d| alive?(d, ref_index) }
-        mark_partial_accessors(dead, ref_index)
+        @alive_inline_constants = compute_alive_inline_constants(@ref_index)
+        @definitions.reject { |d| alive?(d, @ref_index) }
+      end
+
+      # Iterate to a fixpoint: references that originate inside an already-dead METHOD vanish when
+      # that method is removed, which can make the method's exclusive callees dead in turn. Drop
+      # those references, recompute, and repeat until the dead set stops growing. Conservative:
+      # only method bodies (with a known line span) attribute references; the newly-dead are flagged
+      # `cascaded` (pairs well with `--verify-with-sorbet`). Dropping references can only ADD to the
+      # dead set, so the loop is monotonic and terminates.
+      def cascade(dead)
+        base = dead
+        loop do
+          ranges = dead_method_ranges(dead)
+          break if ranges.empty?
+
+          live_references = @references.reject { |reference| reference_within?(reference, ranges) }
+          grown = compute_dead(live_references)
+          break if grown.size == dead.size
+
+          dead = grown
+        end
+        (dead - base).each { |definition| definition.cascaded = true }
         dead
+      end
+
+      # { file => [line-range, ...] } for dead methods. Collected method definitions always carry a
+      # line and end_line (the collector records the body span), so no nil guard is needed here.
+      def dead_method_ranges(dead)
+        ranges = Hash.new { |hash, key| hash[key] = [] }
+        dead.each do |definition|
+          next unless definition.kind == :method
+
+          ranges[definition.file] << (definition.line..definition.end_line)
+        end
+        ranges
+      end
+
+      # True when a reference originates within one of the dead-method line ranges in its file.
+      # Reference locations are always "file:line"; a colon-less location yields file "" (no ranges).
+      def reference_within?(reference, ranges)
+        file, _sep, line = reference.location.to_s.rpartition(":")
+        ranges.fetch(file, []).any? { |range| range.cover?(line.to_i) }
       end
 
       # Mark a dead `attr_reader`/`attr_writer` whose complementary half on the same owner is
@@ -392,7 +443,7 @@ module SorbetDeadcode
       end
 
       # Pre-index all references into hash-based lookups for O(1) access.
-      def build_reference_index
+      def build_reference_index(references = @references)
         untyped_methods = Set.new
         constants = Set.new
         typed_by_name = {}
@@ -401,7 +452,7 @@ module SorbetDeadcode
         dynamic_namespaces = Set.new
         dynamic_subclasses = Set.new
 
-        @references.each do |ref|
+        references.each do |ref|
           case ref.kind
           when :method
             if ref.typed?

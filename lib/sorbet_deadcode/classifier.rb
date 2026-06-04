@@ -129,6 +129,8 @@ module SorbetDeadcode
       # One half of an `attr_accessor` whose other half is live: narrow the accessor, don't
       # delete the whole line (issue #137).
       flags << :partial_accessor if definition.partial_accessor
+      # Became dead only after other dead code was (transitively) removed (issue #136, --cascade).
+      flags << :cascaded if definition.cascaded
       flags
     end
 

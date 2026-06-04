@@ -48,7 +48,7 @@ module SorbetDeadcode
 
   class << self
     def analyze(paths, exclude_paths: [], reference_paths: nil, dynamic_dispatch: :exclude,
-                conventions: nil, extensions: nil)
+                conventions: nil, extensions: nil, cascade: false)
       analyzer = Analyzer::DeadCodeAnalyzer.new(
         paths: paths,
         exclude_paths: exclude_paths,
@@ -56,6 +56,7 @@ module SorbetDeadcode
         dynamic_dispatch: dynamic_dispatch,
         conventions: conventions,
         extensions: extensions,
+        cascade: cascade,
       )
       analyzer.run
     end

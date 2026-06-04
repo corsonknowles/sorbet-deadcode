@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Added
+- **`--cascade`** (#136) — iterate liveness to a fixpoint: after the dead set is found, references
+  that originate inside a dead method vanish when it's removed, which can make that method's
+  exclusive callees dead in turn. `--cascade` drops those references, recomputes, and repeats until
+  the dead set stops growing, surfacing transitively-dead code (e.g. a private helper called only by
+  a now-dead method). Newly-dead definitions are flagged `cascaded`. Conservative (method bodies
+  only, monotonic/terminating) and best paired with `--verify-with-sorbet`.
 - **`--verify-with-sorbet`** (#134) — a type-checker oracle for the FP class static analysis can't
   see (e.g. unqualified calls from nested classes). Trial-removes the candidates, runs `srb tc`, and
   drops any whose removal breaks the typecheck (still referenced). Safe by construction: requires a
