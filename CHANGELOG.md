@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Added
+- **Partial-accessor flag** (#137) — a dead `attr_reader`/`attr_writer` whose complementary half on
+  the same owner is *live* (an `attr_accessor` where only one direction is unused) is flagged
+  `partial_accessor`, signalling that the fix is to narrow the accessor
+  (`attr_accessor` → `attr_reader`/`attr_writer`) rather than delete the whole line. The
+  Sorbet-ivar-inference hazard noted in #137 is best caught empirically by `--verify-with-sorbet`
+  (#134) and is tracked there.
 - **`--history` annotation** (#135) — annotates each candidate with the commit that introduced its
   definition (`added: <sha> <date> <subject>`), surfaced in all `--format` outputs. Uses a
   rename-aware, file-scoped `git log --follow -S` (`SorbetDeadcode::Git::History`); opt-in since it

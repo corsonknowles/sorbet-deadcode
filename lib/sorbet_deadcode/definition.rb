@@ -12,6 +12,12 @@ module SorbetDeadcode
     # (e.g. :graphql_sdl, :erb, :route). Surfaced by the Classifier as a low-confidence flag.
     attr_accessor :kept_by
 
+    # Optional metadata (not part of identity): set by the analyzer when this dead accessor half
+    # (:attr_reader/:attr_writer) has a LIVE sibling half on the same owner — i.e. an
+    # `attr_accessor` where only one direction is dead. Surfaced by the Classifier as a
+    # `partial_accessor` flag so the fix is "narrow the accessor", not "delete the line".
+    attr_accessor :partial_accessor
+
     # co_located_names: names of other definitions whose source is nested inside
     # this definition (e.g. `PARENT = [CHILD = 1]`). Removing this definition would
     # also remove them, so it must not be reported dead while any of them is alive.
@@ -40,6 +46,7 @@ module SorbetDeadcode
       @superclass_name = superclass_name
       @inline_member = inline_member
       @kept_by = nil
+      @partial_accessor = nil
     end
 
     def qualified_name

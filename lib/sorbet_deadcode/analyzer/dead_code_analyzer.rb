@@ -97,7 +97,31 @@ module SorbetDeadcode
         # member is referenced, none can be deleted without rewriting the literal, so keep them
         # all alive. Computed once, up front.
         @alive_inline_constants = compute_alive_inline_constants(ref_index)
-        @definitions.reject { |d| alive?(d, ref_index) }
+        dead = @definitions.reject { |d| alive?(d, ref_index) }
+        mark_partial_accessors(dead, ref_index)
+        dead
+      end
+
+      # Mark a dead `attr_reader`/`attr_writer` whose complementary half on the same owner is
+      # LIVE — i.e. an `attr_accessor` where only one direction is dead. The actionable fix is to
+      # narrow the accessor (`attr_accessor` → `attr_reader`/`attr_writer`), not delete the line.
+      def mark_partial_accessors(dead, ref_index)
+        accessors = @definitions.select { |d| d.kind == :attr_reader || d.kind == :attr_writer }
+        return if accessors.empty?
+
+        by_key = accessors.each_with_object({}) { |d, h| h[[d.owner_name, d.kind, d.name.chomp("=")]] = d }
+        dead.each do |defn|
+          next unless defn.kind == :attr_reader || defn.kind == :attr_writer
+
+          sibling = sibling_accessor(defn, by_key)
+          defn.partial_accessor = true if sibling && alive?(sibling, ref_index)
+        end
+      end
+
+      # The complementary accessor half (reader<->writer) for the same attribute on the same owner.
+      def sibling_accessor(defn, by_key)
+        sibling_kind = defn.kind == :attr_reader ? :attr_writer : :attr_reader
+        by_key[[defn.owner_name, sibling_kind, defn.name.chomp("=")]]
       end
 
       # The set of files that will be analyzed for definitions (after exclusions). Exposed so the

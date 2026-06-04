@@ -1267,6 +1267,61 @@ module SorbetDeadcode
         refute_includes dead_names, "writer"
       end
 
+      # #137: an attr_accessor where only one half is dead flags the dead half partial_accessor.
+      def test_partial_accessor_flagged_when_only_reader_is_dead
+        analyzer = analyze_source(<<~RUBY)
+          class Foo
+            attr_accessor :name
+
+            def use
+              self.name = "x"
+            end
+          end
+
+          Foo.new.use
+        RUBY
+
+        dead = analyzer.dead_definitions
+        reader = dead.find { |d| d.kind == :attr_reader && d.name == "name" }
+
+        assert reader, "the unread reader should be dead"
+        assert reader.partial_accessor
+        refute(dead.any? { |d| d.kind == :attr_writer && d.name == "name=" }, "the written writer is live")
+      end
+
+      def test_accessor_with_both_halves_dead_is_not_partial
+        analyzer = analyze_source(<<~RUBY)
+          class Foo
+            attr_accessor :name
+          end
+
+          Foo.new
+        RUBY
+
+        dead = analyzer.dead_definitions
+        reader = dead.find { |d| d.kind == :attr_reader && d.name == "name" }
+        writer = dead.find { |d| d.kind == :attr_writer && d.name == "name=" }
+
+        assert reader && writer, "both halves are dead"
+        refute reader.partial_accessor
+        refute writer.partial_accessor
+      end
+
+      def test_plain_attr_reader_without_writer_is_not_partial
+        analyzer = analyze_source(<<~RUBY)
+          class Foo
+            attr_reader :name
+          end
+
+          Foo.new
+        RUBY
+
+        reader = analyzer.dead_definitions.find { |d| d.kind == :attr_reader && d.name == "name" }
+
+        assert reader
+        refute reader.partial_accessor
+      end
+
       private
 
       def analyze_source(source)
