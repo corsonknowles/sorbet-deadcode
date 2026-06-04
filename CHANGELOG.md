@@ -15,6 +15,12 @@
     false arm couldn't occur (nested inline constants are always collected).
 
 ### Fixed
+- **`delegate ..., to: :reader` now counts as a reference to the target** (#129) — the collector
+  recorded the delegated method names and the `prefix:` option but ignored the `to:` target. A
+  method/`attr_reader` used *only* as a `delegate :foo, to: :reader` target (the reader is invoked at
+  runtime to obtain the delegation receiver) was therefore reported dead. The symbol form now emits a
+  method reference for the target; the string/constant forms (`to: "Klass"` / `to: SomeConst`) are
+  left to the normal constant handling.
 - **`RouteRefiner` early-out never fired** — it guarded on `routed.empty?`, but `build_routed_set`
   always returns a `{methods:, classes:}` Hash (never an empty Hash), so the no-routes fast path was
   dead. It now checks the underlying sets, matching `RablRefiner`.
