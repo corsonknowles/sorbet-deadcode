@@ -1453,6 +1453,34 @@ module SorbetDeadcode
         refute(dead.any?(&:cascaded))
       end
 
+      # #156: a nested constant/enum referenced by a RELATIVE path (omitting a shared outer
+      # namespace) is alive — the reference is a `::`-suffix of the definition's full name.
+      def test_constant_referenced_by_relative_path_is_alive
+        analyzer = analyze_source(<<~RUBY)
+          module RichText
+            module SerializationHelpers
+              class AttributeKind < T::Enum
+                enums do
+                  Required = new
+                  Optional = new
+                end
+              end
+            end
+
+            class Paragraph
+              def kinds
+                [SerializationHelpers::AttributeKind::Required, SerializationHelpers::AttributeKind::Optional]
+              end
+            end
+          end
+
+          RichText::Paragraph.new.kinds
+        RUBY
+
+        dead = analyzer.dead_definitions.map(&:full_name)
+        refute_includes dead, "RichText::SerializationHelpers::AttributeKind"
+      end
+
       private
 
       def analyze_source(source, cascade: false)
