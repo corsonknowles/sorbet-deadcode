@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Fixed
+- **AASM `transitions` callbacks + nested validation conditionals** (#149) — two DSL forms that
+  reference methods by symbol were missed, so the target methods were reported dead (worse, the
+  symbol is in the same file, so the external-ref count is 0):
+  - `transitions from:, to:, after: :cb, success: :cb2, guard: :ok?` — `transitions` now joins the
+    AASM DSL methods, so its callback/guard symbols are kept alive (`from:`/`to:` are state names,
+    ignored).
+  - `validates :x, exclusion: { in: [...], unless: :skip? }` — the `validates` handler now recurses
+    into hash-valued options for nested `if:`/`unless:` conditionals.
+
 ### Added
 - **Built-in ActiveAdmin convention** (#147) — keeps ActiveAdmin-invoked methods alive: AA
   controllers (`< ActiveAdmin::{Base,Resource,Page}Controller`) and AA helper modules
