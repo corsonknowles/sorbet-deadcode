@@ -41,6 +41,7 @@ require_relative "sorbet_deadcode/lsp/dead_code_finder"
 require_relative "sorbet_deadcode/lsp/hybrid_finder"
 require_relative "sorbet_deadcode/sorbet/file_table_analyzer"
 require_relative "sorbet_deadcode/verifier/ripgrep_verifier"
+require_relative "sorbet_deadcode/verifier/sorbet_verifier"
 
 module SorbetDeadcode
   class Error < StandardError; end

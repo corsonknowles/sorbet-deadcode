@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Added
+- **`--verify-with-sorbet`** (#134) — a type-checker oracle for the FP class static analysis can't
+  see (e.g. unqualified calls from nested classes). Trial-removes the candidates, runs `srb tc`, and
+  drops any whose removal breaks the typecheck (still referenced). Safe by construction: requires a
+  clean baseline typecheck, snapshots the exact bytes of every edited file, and restores them in an
+  `ensure` block. Needs the spoom gem (syntax-aware removal). The orchestration lives in a
+  unit-tested `SorbetDeadcode::Verifier::SorbetVerifier` with injected remover/typechecker seams.
 - **Partial-accessor flag** (#137) — a dead `attr_reader`/`attr_writer` whose complementary half on
   the same owner is *live* (an `attr_accessor` where only one direction is unused) is flagged
   `partial_accessor`, signalling that the fix is to narrow the accessor

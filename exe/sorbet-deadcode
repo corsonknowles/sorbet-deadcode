@@ -50,6 +50,7 @@ options = {
   report_dynamic_dispatch: false,
   report_non_ruby: false,
   spoom: false,
+  verify_with_sorbet: false,
   remove: nil,
   apply: false,
   config: nil,
@@ -146,6 +147,14 @@ OptionParser.new do |opts|
     "Cross-check against spoom: keep only candidates spoom also reports dead.",
     "Runs spoom's dead-code analysis on the same paths via its API (requires the spoom gem).") do
     options[:spoom] = true
+  end
+
+  opts.on("--verify-with-sorbet",
+    "Trial-remove the candidates, run `srb tc`, and drop any whose removal breaks the",
+    "typecheck (still referenced) — eliminating reference-resolution false positives static",
+    "analysis can't see. Requires a CLEAN baseline `srb tc` and the spoom gem (syntax-aware",
+    "removal). Safe: snapshots and restores the edited files.") do
+    options[:verify_with_sorbet] = true
   end
 
   opts.on("--confidence", "Show confidence tier (high/medium/low) for each candidate.") do
@@ -498,6 +507,29 @@ if !from_index && options[:spoom]
               .intersect(spoom_index)
               .dead_definitions
   $stderr.puts "Spoom intersection: #{results.size} candidates also reported dead by spoom."
+end
+
+# --verify-with-sorbet: trial-remove the candidates, run `srb tc`, and drop any whose removal
+# breaks the typecheck (still referenced). Requires the spoom gem for syntax-aware removal; safe
+# (snapshots + restores the edited files, and bails on a dirty baseline typecheck).
+if !from_index && options[:verify_with_sorbet] && !results.empty?
+  begin
+    require "spoom"
+  rescue LoadError
+    $stderr.puts "Error: --verify-with-sorbet needs the spoom gem (used for syntax-aware removal)."
+    exit 1
+  end
+
+  root = options[:project_root]
+  verifier = SorbetDeadcode::Verifier::SorbetVerifier.new(
+    project_root: root,
+    remover: ->(defs) { SorbetDeadcode::Spoom::Remover.remove(defs, project_root: root, apply: true) },
+    typechecker: lambda {
+      output = IO.popen(["srb", "tc"], chdir: root, err: [:child, :out], &:read)
+      [$?.success?, output.to_s]
+    },
+  )
+  results = verifier.verify(results)
 end
 
 if results.empty?
