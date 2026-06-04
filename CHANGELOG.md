@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Added
+- **Public-API caution flag** (#138) — definitions on a public API surface (default: Packwerk's
+  `app/public/`) are flagged `public_api` and routed to `review` instead of `safe_delete` when they
+  have no in-repo references, since external packs/services or runtime consumers (federation,
+  `constantize`) are invisible to static analysis. Configure or disable with `--public-paths`
+  (`--public-paths none` to turn off; comma-separated fragments otherwise).
 - **`--format` output formats** (#139) — the classified view can render as `text` (default),
   `markdown` (PR-ready tables grouped by suggested action), or `json` (machine-readable, for
   piping). The summary line is written to stderr so stdout stays clean for redirection. Rendering
