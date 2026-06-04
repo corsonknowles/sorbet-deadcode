@@ -1623,6 +1623,58 @@ module SorbetDeadcode
         assert_equal "Base", ref.name
       end
 
+      # #130: `class Child < Parent` is a real reference to Parent. The self-reference
+      # suppression must skip only the class's OWN name, not the superclass on the same line.
+      def test_superclass_is_emitted_as_constant_reference
+        refs = collect(<<~RUBY)
+          class Child < Parent
+          end
+        RUBY
+
+        consts = refs.select { |r| r.kind == :constant }.map(&:name)
+        assert_includes consts, "Parent"
+        refute_includes consts, "Child"
+      end
+
+      def test_qualified_superclass_is_emitted_as_constant_reference
+        refs = collect(<<~RUBY)
+          class Child < Namespace::Parent
+          end
+        RUBY
+
+        consts = refs.select { |r| r.kind == :constant }.map(&:name)
+        assert_includes consts, "Namespace::Parent"
+        assert_includes consts, "Namespace"
+        refute_includes consts, "Child"
+      end
+
+      def test_module_superclass_position_only_skips_own_name
+        # A nested definition: only the inner class's own name (Inner) and the module name
+        # (Outer) are suppressed; the superclass Base is still a reference.
+        refs = collect(<<~RUBY)
+          module Outer
+            class Inner < Base
+            end
+          end
+        RUBY
+
+        consts = refs.select { |r| r.kind == :constant }.map(&:name)
+        assert_includes consts, "Base"
+        refute_includes consts, "Inner"
+        refute_includes consts, "Outer"
+      end
+
+      def test_compound_class_name_is_not_self_referenced
+        refs = collect(<<~RUBY)
+          class Outer::Inner
+          end
+        RUBY
+
+        consts = refs.select { |r| r.kind == :constant }.map(&:name)
+        refute_includes consts, "Outer::Inner"
+        refute_includes consts, "Outer"
+      end
+
       private
 
       def collect(source, type_resolver: nil, conventions: nil)

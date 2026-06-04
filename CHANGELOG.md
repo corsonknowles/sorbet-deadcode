@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Fixed
+- **Same-file references no longer missed** (#130) — two false positives where a definition
+  referenced only from elsewhere in the *same file* was reported dead:
+  - A class used **only as a superclass** (`class Child < Parent`) was reported dead. The
+    self-reference suppression keyed on the *line* of the class name, which also swallowed the
+    superclass sharing that line. It now keys on the name node's precise byte-offset span, so the
+    superclass (and any other constant on the line) is emitted as a real reference.
+  - A method invoked through an **unqualified constant receiver** (`Foo.bar`) from a nested or
+    sibling class was reported dead, because the receiver was recorded as the bare name `Foo` while
+    the owner is the fully-qualified `A::B::Foo`. Typed-reference matching now also matches an
+    unqualified receiver to a namespaced owner by demodulized suffix (restricted to unqualified
+    receivers, so fully-qualified calls stay precisely scoped).
+
 ### Added
 - **Wrong-project-root guard** — the CLI now warns when analysis paths fall *outside* the resolved
   project root. The classic trigger is running from inside a different git checkout than the target

@@ -1161,6 +1161,94 @@ module SorbetDeadcode
         FileUtils.remove_entry(dir) if dir
       end
 
+      # #130: a class used only as a superclass (by a same-file subclass) is alive.
+      def test_superclass_referenced_only_by_subclass_is_alive
+        analyzer = analyze_source(<<~RUBY)
+          class BaseError < StandardError; end
+          class SpecificError < BaseError; end
+
+          raise SpecificError
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "BaseError"
+      end
+
+      # #130: an unqualified constant receiver (Foo.bar) written inside a nested/sibling
+      # class resolves lexically to the namespaced owner; it must keep the method alive.
+      def test_unqualified_receiver_matches_namespaced_owner
+        analyzer = analyze_source(<<~RUBY)
+          module Demo
+            class RecordProcessor
+              def self.scrub_records(records)
+                records
+              end
+
+              class NestedChildProcessor
+                def run(records)
+                  RecordProcessor.scrub_records(records)
+                end
+              end
+            end
+          end
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "scrub_records"
+      end
+
+      # Precision guard: an unqualified receiver to a DIFFERENT (same-named-method) class
+      # does not keep an unrelated namespaced method alive.
+      def test_unqualified_receiver_does_not_match_unrelated_owner
+        analyzer = analyze_source(<<~RUBY)
+          module Demo
+            class Alpha
+              def self.shared_name
+              end
+            end
+
+            class Beta
+              def self.shared_name
+              end
+
+              def run
+                Alpha.shared_name
+              end
+            end
+          end
+        RUBY
+
+        # Alpha.shared_name is called; Beta.shared_name is not. The unqualified receiver
+        # `Alpha` must not be mistaken for `Demo::Beta`, so Beta#shared_name stays dead.
+        dead = analyzer.dead_definitions.select { |d| d.name == "shared_name" }.map(&:full_name)
+        assert_includes dead, "Demo::Beta#shared_name"
+        refute_includes dead, "Demo::Alpha#shared_name"
+      end
+
+      # Precision guard: a fully-qualified receiver stays precisely scoped (the qualified
+      # branch of receiver matching) — a call to A::Target.foo does not keep B::Target.foo alive.
+      def test_qualified_receiver_stays_precisely_scoped
+        analyzer = analyze_source(<<~RUBY)
+          module A
+            class Target
+              def self.foo; end
+            end
+          end
+
+          module B
+            class Target
+              def self.foo; end
+            end
+          end
+
+          A::Target.foo
+        RUBY
+
+        dead = analyzer.dead_definitions.select { |d| d.name == "foo" }.map(&:full_name)
+        refute_includes dead, "A::Target#foo"
+        assert_includes dead, "B::Target#foo"
+      end
+
       private
 
       def analyze_source(source)

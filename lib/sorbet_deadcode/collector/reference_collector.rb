@@ -73,7 +73,11 @@ module SorbetDeadcode
         @conventions = conventions || Conventions::Registry.default
         @namespace_stack = []
         @local_types = {}
-        @definition_locations = Set.new
+        # Byte-offset ranges of the constant NAME being defined (`Foo` / `Foo::Bar` in
+        # `class Foo::Bar < Base`). Used to suppress a definition's own name from counting
+        # as a self-reference WITHOUT also suppressing other constants on the same line —
+        # most importantly the superclass after `<`, which is a real reference to the parent.
+        @definition_name_ranges = []
         @current_method_name = nil
         # Local var name => interpolation prefix, e.g. `m = "dump_#{x}"` records "dump_".
         @local_prefixes = {}
@@ -86,7 +90,7 @@ module SorbetDeadcode
       end
 
       def visit_class_node(node)
-        @definition_locations << node.constant_path.location.start_line
+        record_definition_name(node.constant_path)
         @namespace_stack.push(node.constant_path.slice)
 
         location = format_location(node.location)
@@ -101,7 +105,7 @@ module SorbetDeadcode
       end
 
       def visit_module_node(node)
-        @definition_locations << node.constant_path.location.start_line
+        record_definition_name(node.constant_path)
         @namespace_stack.push(node.constant_path.slice)
         super
         @namespace_stack.pop
@@ -239,7 +243,7 @@ module SorbetDeadcode
       end
 
       def visit_constant_read_node(node)
-        return super if @definition_locations.include?(node.location.start_line)
+        return super if within_definition_name?(node)
 
         @references << Reference.new(
           name: node.name.to_s,
@@ -250,7 +254,7 @@ module SorbetDeadcode
       end
 
       def visit_constant_path_node(node)
-        return super if @definition_locations.include?(node.location.start_line)
+        return super if within_definition_name?(node)
 
         location = format_location(node.location)
         full_name = node.slice
@@ -883,6 +887,23 @@ module SorbetDeadcode
           recv_type = resolve_receiver_type(receiver_node.receiver)
           @type_resolver.return_type_of(recv_type, receiver_node.name.to_s)
         end
+      end
+
+      # Record the byte-offset span of a class/module's NAME node so its own constant
+      # reads (and the nested reads inside a `Foo::Bar` path) are not counted as references
+      # to themselves. Anything OUTSIDE this span on the same line — e.g. the superclass —
+      # is visited and emitted normally.
+      def record_definition_name(constant_path_node)
+        loc = constant_path_node.location
+        @definition_name_ranges << (loc.start_offset...loc.end_offset)
+      end
+
+      # True when `node` falls within a recorded definition-name span (i.e. it IS the name
+      # being defined, or a component of it), and so must not be treated as a reference.
+      def within_definition_name?(node)
+        start_offset = node.location.start_offset
+        end_offset = node.location.end_offset
+        @definition_name_ranges.any? { |range| range.begin <= start_offset && end_offset <= range.end }
       end
 
       def node_class_name(class_node)
