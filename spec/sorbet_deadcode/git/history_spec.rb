@@ -38,32 +38,55 @@ module SorbetDeadcode
 
       def test_added_returns_introducing_commit
         path = commit("app/foo.rb", "class Foo\n  def bar; end\nend\n", "Introduce bar")
+        d = defn("bar", path)
 
-        result = History.new(@dir).added(defn("bar", path))
+        result = History.new(@dir).prepare([d]).added(d)
 
         assert result
         assert_includes result, "Introduce bar"
         assert_match(/\A\h+ \d{4}-\d\d-\d\d /, result) # "<sha> <yyyy-mm-dd> <subject>"
       end
 
+      def test_prepare_batches_multiple_names_in_one_file
+        # method_a introduced first, method_b in a later commit — one git pass attributes both.
+        path = commit("app/foo.rb", "class Foo\n  def method_a; end\nend\n", "Add method_a")
+        File.write(path, "class Foo\n  def method_a; end\n  def method_b; end\nend\n")
+        git("add", "app/foo.rb")
+        git("commit", "-q", "-m", "Add method_b")
+
+        history = History.new(@dir).prepare([defn("method_a", path), defn("method_b", path)])
+
+        assert_includes history.added(defn("method_a", path)), "Add method_a"
+        assert_includes history.added(defn("method_b", path)), "Add method_b"
+      end
+
       def test_added_returns_nil_for_name_never_introduced
         path = commit("app/foo.rb", "class Foo\n  def bar; end\nend\n", "Introduce bar")
+        d = defn("never_defined_here", path)
 
-        assert_nil History.new(@dir).added(defn("never_defined_here", path))
+        assert_nil History.new(@dir).prepare([d]).added(d)
+      end
+
+      def test_added_returns_nil_when_not_prepared
+        path = commit("app/foo.rb", "class Foo\n  def bar; end\nend\n", "Introduce bar")
+
+        assert_nil History.new(@dir).added(defn("bar", path))
       end
 
       def test_added_returns_nil_outside_git_checkout
         Dir.mktmpdir do |non_git|
           path = File.join(non_git, "a.rb")
           File.write(path, "class Foo\n  def bar; end\nend\n")
-          assert_nil History.new(non_git).added(defn("bar", path))
+          d = defn("bar", path)
+          assert_nil History.new(non_git).prepare([d]).added(d)
         end
       end
 
       def test_added_returns_nil_on_git_error
         path = commit("app/foo.rb", "class Foo\n  def bar; end\nend\n", "Introduce bar")
+        d = defn("bar", path)
         IO.stub(:popen, ->(*) { raise "boom" }) do
-          assert_nil History.new(@dir).added(defn("bar", path))
+          assert_nil History.new(@dir).prepare([d]).added(d)
         end
       end
     end

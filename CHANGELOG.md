@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Changed
+- **`--history` is now batched per file** (#146) — instead of a pickaxe per candidate
+  (`git log -S name`, which walked the file's whole history once *per name*), `Git::History#prepare`
+  runs ONE rename-aware `git log --follow --reverse -p` per file and attributes every candidate
+  name's introducing commit in a single streaming pass, stopping early once all names for that file
+  are found. Cuts git invocations from per-candidate to per-file on deep-history repos.
+
 ### Fixed
 - **AASM `transitions` callbacks + nested validation conditionals** (#149) — two DSL forms that
   reference methods by symbol were missed, so the target methods were reported dead (worse, the
