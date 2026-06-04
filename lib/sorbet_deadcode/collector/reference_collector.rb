@@ -335,7 +335,39 @@ module SorbetDeadcode
         super
       end
 
+      # Source-level instance-variable assignments (`@foo = …`, and the op/and/or-assign forms),
+      # recorded per owner so the analyzer can tell whether a backing ivar is set independently of
+      # an accessor — see the partial-accessor ivar hazard (#137).
+      def visit_instance_variable_write_node(node)
+        emit_ivar_write(node)
+        super
+      end
+
+      def visit_instance_variable_operator_write_node(node)
+        emit_ivar_write(node)
+        super
+      end
+
+      def visit_instance_variable_and_write_node(node)
+        emit_ivar_write(node)
+        super
+      end
+
+      def visit_instance_variable_or_write_node(node)
+        emit_ivar_write(node)
+        super
+      end
+
       private
+
+      def emit_ivar_write(node)
+        @references << Reference.new(
+          name: node.name.to_s.delete_prefix("@"),
+          location: format_location(node.location),
+          kind: :ivar_write,
+          receiver_type: current_namespace,
+        )
+      end
 
       def collect_dynamic_dispatch(node, location)
         first_arg = node.arguments.arguments.first
