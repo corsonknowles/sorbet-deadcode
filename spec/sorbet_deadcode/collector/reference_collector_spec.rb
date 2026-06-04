@@ -1861,6 +1861,58 @@ module SorbetDeadcode
         refute refs.any? { |r| r.kind == :dynamic_namespace }
       end
 
+      # #137: source-level ivar assignments are recorded as :ivar_write references on the owner so
+      # the analyzer can tell when an accessor's backing @ivar is set independently.
+      def test_collects_instance_variable_write
+        refs = collect(<<~RUBY)
+          class Foo
+            def set
+              @name = "x"
+            end
+          end
+        RUBY
+
+        ref = refs.find { |r| r.kind == :ivar_write && r.name == "name" }
+        assert ref, "plain @name = assignment should emit an ivar_write reference"
+        assert_equal "Foo", ref.receiver_type
+      end
+
+      def test_collects_instance_variable_operator_write
+        refs = collect(<<~RUBY)
+          class Foo
+            def bump
+              @count += 1
+            end
+          end
+        RUBY
+
+        assert(refs.any? { |r| r.kind == :ivar_write && r.name == "count" }, "@count += should emit ivar_write")
+      end
+
+      def test_collects_instance_variable_or_write
+        refs = collect(<<~RUBY)
+          class Foo
+            def memo
+              @cache ||= []
+            end
+          end
+        RUBY
+
+        assert(refs.any? { |r| r.kind == :ivar_write && r.name == "cache" }, "@cache ||= should emit ivar_write")
+      end
+
+      def test_collects_instance_variable_and_write
+        refs = collect(<<~RUBY)
+          class Foo
+            def narrow
+              @flag &&= false
+            end
+          end
+        RUBY
+
+        assert(refs.any? { |r| r.kind == :ivar_write && r.name == "flag" }, "@flag &&= should emit ivar_write")
+      end
+
       private
 
       def collect(source, type_resolver: nil, conventions: nil)

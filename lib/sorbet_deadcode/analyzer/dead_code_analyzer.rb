@@ -165,8 +165,22 @@ module SorbetDeadcode
           next unless defn.kind == :attr_reader || defn.kind == :attr_writer
 
           sibling = sibling_accessor(defn, by_key)
-          defn.partial_accessor = true if sibling && alive?(sibling, ref_index)
+          next unless sibling && alive?(sibling, ref_index)
+
+          defn.partial_accessor = true
+          defn.ivar_hazard = true if ivar_hazard?(defn, ref_index)
         end
+      end
+
+      # Removing the writer half of an attr_accessor is a Sorbet hazard when the backing `@ivar` is
+      # not assigned anywhere else in source: the surviving reader then reads an ivar that is never
+      # written, which Sorbet reports as an error. Only the writer-removal direction is risky (the
+      # reader-removal direction leaves the writer assigning `@ivar`, so it stays typed).
+      def ivar_hazard?(defn, ref_index)
+        return false unless defn.kind == :attr_writer
+
+        base = defn.name.chomp("=")
+        !ref_index[:ivar_writes].fetch(defn.owner_name) { Set.new }.include?(base)
       end
 
       # The complementary accessor half (reader<->writer) for the same attribute on the same owner.
@@ -451,6 +465,7 @@ module SorbetDeadcode
         method_suffixes = Set.new
         dynamic_namespaces = Set.new
         dynamic_subclasses = Set.new
+        ivar_writes = Hash.new { |hash, key| hash[key] = Set.new }
 
         references.each do |ref|
           case ref.kind
@@ -470,6 +485,8 @@ module SorbetDeadcode
             dynamic_namespaces << ref.name
           when :dynamic_subclasses
             dynamic_subclasses << ref.name
+          when :ivar_write
+            ivar_writes[ref.receiver_type] << ref.name
           end
         end
 
@@ -482,6 +499,8 @@ module SorbetDeadcode
           dynamic_namespaces: dynamic_namespaces,
           # full_names of classes kept alive via .descendants/.subclasses (computed below).
           reflected_subclasses: reflected_subclasses(dynamic_subclasses),
+          # owner full_name => Set of ivar base names assigned directly in source (`@foo = …`).
+          ivar_writes: ivar_writes,
         }
       end
 

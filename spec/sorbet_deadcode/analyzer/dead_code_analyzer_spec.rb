@@ -1322,6 +1322,76 @@ module SorbetDeadcode
         refute reader.partial_accessor
       end
 
+      # #137: a dead writer whose live reader's @ivar is never assigned in source is an ivar hazard
+      # (removing the writer leaves @ivar read-but-unassigned, a Sorbet error).
+      def test_dead_writer_flags_ivar_hazard_when_ivar_never_assigned
+        analyzer = analyze_source(<<~RUBY)
+          class Foo
+            attr_accessor :name
+
+            def show
+              name
+            end
+          end
+
+          Foo.new.show
+        RUBY
+
+        writer = analyzer.dead_definitions.find { |d| d.kind == :attr_writer && d.name == "name=" }
+
+        assert writer, "the unwritten writer should be dead"
+        assert writer.partial_accessor
+        assert writer.ivar_hazard
+      end
+
+      # #137: a direct `@name =` assignment elsewhere keeps the ivar typed, so removing the writer
+      # is safe — partial_accessor but NOT an ivar hazard.
+      def test_dead_writer_no_ivar_hazard_when_ivar_assigned_directly
+        analyzer = analyze_source(<<~RUBY)
+          class Foo
+            attr_accessor :name
+
+            def initialize
+              @name = "x"
+            end
+
+            def show
+              name
+            end
+          end
+
+          Foo.new.show
+        RUBY
+
+        writer = analyzer.dead_definitions.find { |d| d.kind == :attr_writer && d.name == "name=" }
+
+        assert writer
+        assert writer.partial_accessor
+        refute writer.ivar_hazard
+      end
+
+      # #137: removing the reader half is never an ivar hazard — the surviving writer still assigns
+      # @ivar, so it stays typed.
+      def test_dead_reader_is_not_ivar_hazard
+        analyzer = analyze_source(<<~RUBY)
+          class Foo
+            attr_accessor :name
+
+            def use
+              self.name = "x"
+            end
+          end
+
+          Foo.new.use
+        RUBY
+
+        reader = analyzer.dead_definitions.find { |d| d.kind == :attr_reader && d.name == "name" }
+
+        assert reader
+        assert reader.partial_accessor
+        refute reader.ivar_hazard
+      end
+
       # #136: --cascade surfaces a helper called only by a now-dead method.
       def test_cascade_finds_transitively_dead_helper
         analyzer = analyze_source(<<~RUBY, cascade: true)

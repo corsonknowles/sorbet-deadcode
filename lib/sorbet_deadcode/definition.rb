@@ -23,6 +23,12 @@ module SorbetDeadcode
     # Classifier as a `cascaded` flag.
     attr_accessor :cascaded
 
+    # Optional metadata (not part of identity): set by the analyzer on a dead attr_writer whose
+    # live sibling reader's backing ivar is NOT assigned anywhere else in the owner — so narrowing
+    # the accessor by removing the writer would leave `@ivar` read-but-unassigned (a Sorbet error).
+    # Surfaced by the Classifier as an `ivar_hazard` flag.
+    attr_accessor :ivar_hazard
+
     # co_located_names: names of other definitions whose source is nested inside
     # this definition (e.g. `PARENT = [CHILD = 1]`). Removing this definition would
     # also remove them, so it must not be reported dead while any of them is alive.
