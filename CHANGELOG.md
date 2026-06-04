@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Added
+- **Built-in ActiveAdmin convention** (#147) — keeps ActiveAdmin-invoked methods alive: AA
+  controllers (`< ActiveAdmin::{Base,Resource,Page}Controller`) and AA helper modules
+  (`*Helper` under an `active_admin` path), whose methods are invoked from routing / arbre views /
+  register DSL the analyzer doesn't scan. Conventions now also apply to **module** nodes (not just
+  classes), so helper modules are matched.
 - **`--cascade`** (#136) — iterate liveness to a fixpoint: after the dead set is found, references
   that originate inside a dead method vanish when it's removed, which can make that method's
   exclusive callees dead in turn. `--cascade` drops those references, recomputes, and repeats until

@@ -107,6 +107,11 @@ module SorbetDeadcode
       def visit_module_node(node)
         record_definition_name(node.constant_path)
         @namespace_stack.push(node.constant_path.slice)
+
+        # Conventions apply to modules too (a module has no superclass, so only the
+        # includes/name matchers can fire) — e.g. ActiveAdmin helper modules.
+        emit_convention_references(node, format_location(node.location))
+
         super
         @namespace_stack.pop
       end
@@ -726,7 +731,8 @@ module SorbetDeadcode
       # (kept alive wherever they occur, like the visit_/test_ families); keep_namespace marks the
       # whole class dynamically dispatched (reflection-driven classes — migrations, generators).
       def emit_convention_references(class_node, location)
-        superclass = class_node.superclass&.slice
+        # Module nodes have no superclass; only class nodes respond to #superclass.
+        superclass = class_node.respond_to?(:superclass) ? class_node.superclass&.slice : nil
         class_name = node_class_name(class_node)
         includes = included_modules(class_node)
 
