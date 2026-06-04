@@ -59,6 +59,19 @@ module SorbetDeadcode
       refute_includes result.flags, :recently_added
     end
 
+    def test_ripgrep_line_without_colon_is_skipped
+      path = write("app/foo.rb", "class Foo\n  def m; end\nend\n")
+      candidate = defn("m", location: "#{path}:2")
+
+      # A malformed rg line with no ":" yields [nil, nil] from split_match_line and is skipped.
+      SorbetDeadcode::Ripgrep.stub(:available?, true) do
+        SorbetDeadcode::Ripgrep.stub(:search, ->(_names, **_opts, &blk) { blk.call("malformed_no_colon\n") }) do
+          result = Classifier.new(project_root: @dir).classify([candidate]).first
+          assert_equal 0, result.external_reference_count
+        end
+      end
+    end
+
     def test_kept_by_marks_low_confidence_review_with_source_flag
       path = write("app/foo.rb", "class Foo\n  def kept_method\n  end\nend\n")
       candidate = defn("kept_method", location: "#{path}:2")

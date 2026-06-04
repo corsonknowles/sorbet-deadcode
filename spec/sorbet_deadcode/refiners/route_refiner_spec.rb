@@ -158,6 +158,30 @@ module SorbetDeadcode
         refute_includes names, "index"
         assert_includes names, "dead_action"
       end
+
+      def test_refine_returns_candidates_unchanged_when_no_routes_contribute
+        # No routes.rb under @dir/config → build_routed_set yields empty sets.
+        defn = make_def("anything")
+        assert_equal [defn], refiner.refine([defn])
+      end
+
+      def test_build_routed_set_skips_method_without_receiver_type_and_other_kinds
+        # Stub the scanner to emit a method ref with no receiver_type (skipped) and a
+        # non-method/non-constant ref (falls through the case) — defensive arms the real
+        # scanner never produces.
+        fake_refs = [
+          Reference.new(name: "orphan", location: "f:1", kind: :method),
+          Reference.new(name: "ns", location: "f:1", kind: :dynamic_namespace),
+        ]
+        fake_scanner = Object.new
+        fake_scanner.define_singleton_method(:references) { fake_refs }
+
+        Scanners::RouteScanner.stub(:new, fake_scanner) do
+          defn = make_def("orphan")
+          # Neither ref contributes to routed methods/classes, so nothing is routed.
+          assert_equal [defn], refiner.refine([defn])
+        end
+      end
     end
   end
 end

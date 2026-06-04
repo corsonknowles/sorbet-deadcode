@@ -21,10 +21,11 @@ SimpleCov.start do
   # is covered by remover_integration_spec behind the optional spoom dep.
   add_filter "lib/sorbet_deadcode/spoom/remover.rb"
 
-  # Line coverage is held at 100%. Branch coverage floor is 96%: the small
-  # remainder are defensive parser-edge guards (e.g. `next unless node.is_a?(...)`
-  # for Prism node shapes that don't occur in valid Ruby reached by our visitors).
-  minimum_coverage line: 100, branch: 96
+  # Line and branch coverage are both held at 100%. Every conditional arm is either
+  # exercised by a test (including the negative/parser-edge cases) or was removed as a
+  # provably-unreachable branch. Keep it at 100% so a newly-introduced uncovered branch
+  # fails CI rather than hiding under slack.
+  minimum_coverage line: 100, branch: 100
 end
 
 require "benchmark"

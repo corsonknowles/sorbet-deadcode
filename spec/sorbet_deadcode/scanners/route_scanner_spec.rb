@@ -359,6 +359,63 @@ module SorbetDeadcode
         assert_nil collector.send(:symbol_or_string, int_node)
       end
 
+      # ---- branch-coverage edge cases -------------------------------------
+
+      def test_route_verb_without_arguments_is_skipped
+        refs = write_routes(<<~RUBY)
+          Rails.application.routes.draw do
+            get
+          end
+        RUBY
+
+        assert_empty refs
+      end
+
+      def test_route_hash_with_splat_assoc_is_skipped
+        refs = write_routes("get '/x', to: 'widgets#index', **extra_opts")
+        # The **splat is not an AssocNode; the recognized `to:` still resolves.
+        assert refs.any? { |r| r.name == "index" && r.receiver_type == "WidgetsController" }
+      end
+
+      def test_route_unrecognized_key_with_non_hashrocket_value_does_not_set_to
+        refs = write_routes("get '/x', controller: 'widgets', random: 'no_hash_here'")
+        # `random:` value has no "#", so `to` stays nil; falls back to controller form.
+        assert refs.any? { |r| r.kind == :constant && r.name == "WidgetsController" }
+        assert_empty refs.select { |r| r.kind == :method }
+      end
+
+      def test_resources_with_non_symbol_non_string_first_arg_is_skipped
+        refs = write_routes("resources SomeModel")
+        assert_empty refs.select { |r| r.kind == :method }
+      end
+
+      def test_resources_options_with_splat_assoc_is_skipped
+        refs = write_routes("resources :widgets, **shared_opts")
+        # The **splat is skipped; CRUD actions for the inferred controller still emit.
+        assert refs.any? { |r| r.name == "index" && r.receiver_type == "WidgetsController" }
+      end
+
+      def test_resources_with_empty_only_emits_no_references
+        refs = write_routes("resources :widgets, only: []")
+        assert_empty refs
+      end
+
+      def test_namespace_with_empty_block_does_not_crash
+        # Empty block: node.block responds to :body but body is nil (exercises the
+        # second operand of the visit_block_children guard).
+        refs = write_routes("namespace :admin do\nend")
+        assert_kind_of Array, refs
+        assert_empty refs
+      end
+
+      def test_route_unrecognized_key_with_non_string_value_does_not_set_to
+        # An unrecognized key whose value is neither symbol nor string → symbol_or_string
+        # returns nil, exercising the `value&.include?` nil short-circuit.
+        refs = write_routes("get '/x', controller: 'widgets', random: 123")
+        assert refs.any? { |r| r.kind == :constant && r.name == "WidgetsController" }
+        assert_empty refs.select { |r| r.kind == :method }
+      end
+
     end
   end
 end

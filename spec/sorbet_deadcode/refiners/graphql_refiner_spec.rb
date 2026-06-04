@@ -152,6 +152,19 @@ module SorbetDeadcode
         refute_includes names, "full_name"
         assert_includes names, "truly_dead"
       end
+
+      def test_scoped_names_ignores_non_method_scanner_refs
+        # The scanner contractually emits only :method refs; stub a :constant ref to exercise
+        # the defensive `if ref.kind == :method` filter (non-method refs are not field names).
+        fake_refs = [Reference.new(name: "Foo", location: "#{@dir}/app/graphql/f.rb:1", kind: :constant)]
+        fake_scanner = Object.new
+        fake_scanner.define_singleton_method(:references) { fake_refs }
+
+        Scanners::GraphqlScanner.stub(:new, fake_scanner) do
+          defn = make_def("Foo")
+          assert_equal [defn], GraphqlRefiner.new(@dir).refine([defn])
+        end
+      end
     end
   end
 end

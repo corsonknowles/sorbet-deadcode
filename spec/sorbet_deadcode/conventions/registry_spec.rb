@@ -62,6 +62,16 @@ module SorbetDeadcode
         assert_kind_of Registry, Registry.from_config({})
       end
 
+      def test_from_config_send_handler_without_positional_key
+        # No `positional` key → the `attrs[:positional].to_sym` conversion is skipped
+        # (SendHandler defaults positional to :methods).
+        registry = Registry.from_config(
+          "send_handlers" => [{ "name" => "track_event", "methods" => ["handle_event"] }],
+        )
+
+        assert registry.send_handler_for("handle_event")
+      end
+
       def test_conventions_reader_exposes_builtins_for_introspection
         names = Registry.default.conventions.map(&:name)
 

@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Changed
+- **Branch coverage is now held at 100%** (floor raised from 96%). Audited the previously
+  "uncoverable defensive guard" branches: most were ordinary negative-case arms now covered by
+  targeted tests, and a few were provably unreachable and removed/refactored:
+  - `RouteScanner#emit_to_reference` dropped a `return unless action` that can't fire (the caller
+    only passes `"#"`-containing strings) and a redundant `&.` whose nil-arm was unreachable.
+  - `Classifier#action_for` simplified a ternary whose `:review` arm was unreachable (by that point
+    every external reference has already been bucketed, so the count is always zero) — also drops a
+    now-unused parameter.
+  - `DeadCodeAnalyzer#compute_alive_inline_constants` uses `filter_map` instead of a nil-guard whose
+    false arm couldn't occur (nested inline constants are always collected).
+
+### Fixed
+- **`RouteRefiner` early-out never fired** — it guarded on `routed.empty?`, but `build_routed_set`
+  always returns a `{methods:, classes:}` Hash (never an empty Hash), so the no-routes fast path was
+  dead. It now checks the underlying sets, matching `RablRefiner`.
+
 ### Added
 - **Wrong-project-root guard** — the CLI now warns when analysis paths fall *outside* the resolved
   project root. The classic trigger is running from inside a different git checkout than the target
