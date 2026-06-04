@@ -8,6 +8,13 @@
   `module_eval`/`*_exec` family) is dynamically injected onto another class and invoked on that
   host's instances, which the tool can't resolve. The definition collector now skips method
   definitions nested inside such blocks, so they're never reported dead.
+- **`T::Enum` / constant referenced by a relative path is no longer a false positive** (#156) — a
+  nested constant or `T::Enum` accessed via a relative path that omits a shared enclosing namespace
+  (e.g. `Mid::Enum::Value` from a sibling inside the same outer module) was reported dead, because
+  the collector emits the path prefixes it sees (`Mid::Enum`) while the analyzer only matched the
+  definition's bare name or absolute `full_name`. The analyzer now also treats a constant/namespace
+  alive when any proper `::`-suffix of its full name appears in the referenced constants — the
+  common case for an enum used only through its values.
 
 ### Added
 - **`--dead-since` annotation** (#135) — the `dead_since:` half of the history feature. For each

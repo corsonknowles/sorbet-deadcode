@@ -299,6 +299,9 @@ module SorbetDeadcode
           (@multi_file_namespaces || Set.new).include?(definition.full_name) ||
             ref_index[:constants].include?(definition.name) ||
             ref_index[:constants].include?(definition.full_name) ||
+            # Referenced by a relative path (e.g. a nested `T::Enum` used as `Mid::Enum::Value`
+            # from a sibling that shares the outer namespace) — see #referenced_by_relative_path?.
+            referenced_by_relative_path?(definition.full_name, ref_index) ||
             # A class/module explicitly marked as dynamic_namespace (e.g. MailerPreview)
             # is alive — its class definition should not be reported dead any more than
             # its methods would be.
@@ -310,6 +313,7 @@ module SorbetDeadcode
         when :constant
           ref_index[:constants].include?(definition.name) ||
             ref_index[:constants].include?(definition.full_name) ||
+            referenced_by_relative_path?(definition.full_name, ref_index) ||
             (@alive_inline_constants || Set.new).include?(definition.full_name)
         when :method, :attr_reader, :attr_writer
           # Ruby/Rails protocol methods that are never called directly.
@@ -324,6 +328,22 @@ module SorbetDeadcode
         else
           false
         end
+      end
+
+      # A constant/namespace referenced by a RELATIVE path (omitting a shared enclosing
+      # namespace) appears in the reference set as a `::`-suffix of its full name — e.g. a
+      # definition `A::B::C` referenced from inside `module A` as `B::C`. The collector emits the
+      # path prefixes it observes (`B`, `B::C`), so we match any proper trailing-segment suffix of
+      # the definition's full name against the referenced constants. This is the common Ruby case
+      # for a nested `T::Enum` accessed via its values (`Mid::Enum::Value`); without it the enum
+      # class is reported dead even though it's used everywhere (issue #156). Erring toward "alive"
+      # is the safe direction and mirrors the demodulized matching used for receivers and reflected
+      # subclasses. The full name itself (i == 0) is covered by the exact-match guards.
+      def referenced_by_relative_path?(full_name, ref_index)
+        segments = full_name.split("::")
+        return false if segments.size < 2
+
+        (1...segments.size).any? { |i| ref_index[:constants].include?(segments[i..].join("::")) }
       end
 
       # full_names of class/module namespaces that lexically enclose at least one
