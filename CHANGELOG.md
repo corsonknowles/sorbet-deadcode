@@ -8,6 +8,10 @@
   have no in-repo references, since external packs/services or runtime consumers (federation,
   `constantize`) are invisible to static analysis. Configure or disable with `--public-paths`
   (`--public-paths none` to turn off; comma-separated fragments otherwise).
+- **`--format` output formats** (#139) — the classified view can render as `text` (default),
+  `markdown` (PR-ready tables grouped by suggested action), or `json` (machine-readable, for
+  piping). The summary line is written to stderr so stdout stays clean for redirection. Rendering
+  lives in a unit-tested `SorbetDeadcode::Formatter`.
 
 ### Changed
 - **Branch coverage is now held at 100%** (floor raised from 96%). Audited the previously
