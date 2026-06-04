@@ -311,5 +311,14 @@ module SorbetDeadcode
 
       assert_nil classify_one(defn("fresh", location: "#{path}:2")).added
     end
+
+    # #137: a definition the analyzer marked partial_accessor surfaces the flag.
+    def test_partial_accessor_flag_is_surfaced
+      path = write("app/foo.rb", "class Foo\n  attr_accessor :name\nend\n")
+      definition = defn("name", kind: :attr_reader, location: "#{path}:2")
+      definition.partial_accessor = true
+
+      assert_includes classify_one(definition).flags, :partial_accessor
+    end
   end
 end

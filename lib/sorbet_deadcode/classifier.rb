@@ -126,6 +126,9 @@ module SorbetDeadcode
       # Defined on a public API surface (e.g. Packwerk app/public/): external/runtime
       # consumers are invisible to in-repo analysis, so caution even at zero references.
       flags << :public_api if public_api?(definition)
+      # One half of an `attr_accessor` whose other half is live: narrow the accessor, don't
+      # delete the whole line (issue #137).
+      flags << :partial_accessor if definition.partial_accessor
       flags
     end
 
