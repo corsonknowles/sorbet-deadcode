@@ -1453,6 +1453,27 @@ module SorbetDeadcode
         refute(dead.any?(&:cascaded))
       end
 
+      # #155: a method defined inside a `*.class_eval do … end` block is dynamically injected onto
+      # another class and invoked on that host's instances, which the tool can't resolve — so it
+      # must not be reported dead.
+      def test_method_defined_inside_class_eval_is_not_reported_dead
+        analyzer = analyze_source(<<~RUBY)
+          class TrackingInstaller
+            def install_on(target_klass)
+              target_klass.class_eval do
+                def capture_change(payload = {})
+                  @captured = payload
+                end
+              end
+            end
+          end
+
+          TrackingInstaller.new
+        RUBY
+
+        refute_includes analyzer.dead_definitions.map(&:name), "capture_change"
+      end
+
       # #156: a nested constant/enum referenced by a RELATIVE path (omitting a shared outer
       # namespace) is alive — the reference is a `::`-suffix of the definition's full name.
       def test_constant_referenced_by_relative_path_is_alive

@@ -7,6 +7,14 @@ module SorbetDeadcode
     class DefinitionCollector < Prism::Visitor
       attr_reader :definitions
 
+      # Metaprogramming entry points that take a block and `def` methods onto a (often foreign)
+      # class/object at runtime. Methods defined inside such a block are invoked on the HOST's
+      # instances — which the tool can't resolve back to the lexical owner — so they must not be
+      # reported dead (issue #155).
+      EVAL_BLOCK_METHODS = %w[
+        class_eval module_eval instance_eval class_exec module_exec instance_exec
+      ].to_set.freeze
+
       def initialize(file_path)
         super()
         @file_path = file_path
@@ -14,6 +22,7 @@ module SorbetDeadcode
         @namespace_stack = []
         @enum_stack = [] # parallel to @namespace_stack: is each enclosing class a T::Enum?
         @in_constant_value = false # true while visiting a constant's value (for inline members)
+        @eval_block_depth = 0 # >0 while inside a class_eval/instance_eval/... block (see #155)
       end
 
       def visit_class_node(node)
@@ -50,6 +59,11 @@ module SorbetDeadcode
       end
 
       def visit_def_node(node)
+        # Defined inside a class_eval/instance_eval/... block → dynamically injected onto another
+        # class and called on that host's instances; the tool can't see those callers, so don't
+        # collect it as a candidate (it would be a guaranteed false positive). Still recurse.
+        return super if @eval_block_depth.positive?
+
         name = node.name.to_s
         owner = current_namespace
         @definitions << Definition.new(
@@ -123,6 +137,17 @@ module SorbetDeadcode
       end
 
       def visit_call_node(node)
+        # `foo.class_eval do def m; end end` (and the eval/exec family) inject methods at runtime;
+        # mark the block so visit_def_node skips definitions nested inside it (#155).
+        if node.block && EVAL_BLOCK_METHODS.include?(node.name.to_s)
+          @eval_block_depth += 1
+          begin
+            return super
+          ensure
+            @eval_block_depth -= 1
+          end
+        end
+
         if node.receiver.nil?
           case node.name.to_s
           when "attr_reader"

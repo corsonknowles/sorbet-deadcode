@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Fixed
+- **Methods defined inside `class_eval`/`instance_eval` blocks are no longer false positives** (#155)
+  — a method defined inside a `klass.class_eval do def m; … end end` block (and the
+  `module_eval`/`*_exec` family) is dynamically injected onto another class and invoked on that
+  host's instances, which the tool can't resolve. The definition collector now skips method
+  definitions nested inside such blocks, so they're never reported dead.
 - **`T::Enum` / constant referenced by a relative path is no longer a false positive** (#156) — a
   nested constant or `T::Enum` accessed via a relative path that omits a shared enclosing namespace
   (e.g. `Mid::Enum::Value` from a sibling inside the same outer module) was reported dead, because
