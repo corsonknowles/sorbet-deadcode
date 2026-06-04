@@ -58,6 +58,8 @@ module SorbetDeadcode
           kind: :method,
           location: format_location(node.location),
           owner_name: owner,
+          # Body span, so the --cascade pass can drop references that originate inside this method.
+          end_line: node.location.end_line,
         )
         super
       end

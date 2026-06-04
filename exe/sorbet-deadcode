@@ -51,6 +51,7 @@ options = {
   report_non_ruby: false,
   spoom: false,
   verify_with_sorbet: false,
+  cascade: false,
   remove: nil,
   apply: false,
   config: nil,
@@ -147,6 +148,14 @@ OptionParser.new do |opts|
     "Cross-check against spoom: keep only candidates spoom also reports dead.",
     "Runs spoom's dead-code analysis on the same paths via its API (requires the spoom gem).") do
     options[:spoom] = true
+  end
+
+  opts.on("--cascade",
+    "Iterate to a fixpoint: after finding dead code, drop references that originate inside",
+    "dead methods and recompute, surfacing transitively-dead code (e.g. a private helper",
+    "called only by a now-dead method). Newly-dead definitions are flagged `cascaded`. Best",
+    "paired with --verify-with-sorbet.") do
+    options[:cascade] = true
   end
 
   opts.on("--verify-with-sorbet",
@@ -399,6 +408,13 @@ if options[:report_dynamic_dispatch] && (mode_count.positive? || from_index)
                "ignoring it for --lsp/--hybrid/--file-table/--report."
 end
 
+# --cascade is implemented only on the default Prism analyze path (it needs the reference set to
+# recompute liveness); the LSP/hybrid/file-table finders and cached --report indexes don't honor it.
+if options[:cascade] && (mode_count.positive? || from_index)
+  $stderr.puts "[sorbet-deadcode] --cascade only applies in the default mode; " \
+               "ignoring it for --lsp/--hybrid/--file-table/--report."
+end
+
 results = if from_index
   index = SorbetDeadcode::Index.load(options[:load_index])
   index = index.filter_paths(options[:filter_paths]) unless options[:filter_paths].empty?
@@ -433,6 +449,7 @@ else
     dynamic_dispatch: options[:report_dynamic_dispatch] ? :report : :exclude,
     conventions: options[:conventions],
     extensions: options[:extensions],
+    cascade: options[:cascade],
   )
 end
 

@@ -1322,13 +1322,74 @@ module SorbetDeadcode
         refute reader.partial_accessor
       end
 
+      # #136: --cascade surfaces a helper called only by a now-dead method.
+      def test_cascade_finds_transitively_dead_helper
+        analyzer = analyze_source(<<~RUBY, cascade: true)
+          class Foo
+            def dead_entry
+              helper
+            end
+
+            def helper
+              42
+            end
+          end
+        RUBY
+
+        dead = analyzer.dead_definitions
+        names = dead.map(&:name)
+        assert_includes names, "dead_entry"
+        assert_includes names, "helper"
+        assert dead.find { |d| d.name == "helper" }.cascaded, "helper became dead via cascade"
+        refute dead.find { |d| d.name == "dead_entry" }.cascaded, "dead_entry is base-dead, not cascaded"
+      end
+
+      def test_without_cascade_helper_of_dead_method_stays_alive
+        analyzer = analyze_source(<<~RUBY)
+          class Foo
+            def dead_entry
+              helper
+            end
+
+            def helper
+              42
+            end
+          end
+        RUBY
+
+        names = analyzer.dead_definitions.map(&:name)
+        assert_includes names, "dead_entry"
+        refute_includes names, "helper"
+      end
+
+      def test_cascade_with_no_dead_methods_is_a_noop
+        analyzer = analyze_source(<<~RUBY, cascade: true)
+          class Foo
+            DEAD_CONST = 1
+
+            def alive
+            end
+
+            def use
+              alive
+            end
+          end
+
+          Foo.new.use
+        RUBY
+
+        dead = analyzer.dead_definitions
+        assert_includes dead.map(&:name), "DEAD_CONST"
+        refute(dead.any?(&:cascaded))
+      end
+
       private
 
-      def analyze_source(source)
+      def analyze_source(source, cascade: false)
         # Temp dir is intentionally not cleaned up — the test process handles it.
         dir = Dir.mktmpdir
         File.write("#{dir}/test.rb", source)
-        analyzer = DeadCodeAnalyzer.new(paths: [dir])
+        analyzer = DeadCodeAnalyzer.new(paths: [dir], cascade: cascade)
         analyzer.run
         analyzer
       end
