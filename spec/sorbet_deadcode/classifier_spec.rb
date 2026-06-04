@@ -342,6 +342,19 @@ module SorbetDeadcode
       assert_includes classify_one(definition).flags, :partial_accessor
     end
 
+    # #137: a definition the analyzer marked ivar_hazard surfaces the flag and routes to :review
+    # (never safe_delete) so a human keeps a typed declaration when narrowing.
+    def test_ivar_hazard_flag_routes_to_review
+      path = write("app/foo.rb", "class Foo\n  attr_accessor :name\nend\n")
+      definition = defn("name=", kind: :attr_writer, location: "#{path}:2")
+      definition.partial_accessor = true
+      definition.ivar_hazard = true
+
+      result = classify_one(definition)
+      assert_includes result.flags, :ivar_hazard
+      assert_equal :review, result.suggested_action
+    end
+
     # #136: a definition the analyzer marked cascaded surfaces the flag.
     def test_cascaded_flag_is_surfaced
       path = write("app/foo.rb", "class Foo\n  def helper; end\nend\n")

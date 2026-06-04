@@ -12,7 +12,10 @@ module SorbetDeadcode
     # dynamic_subclasses: a `Base.descendants` / `Base.subclasses` call — every subclass of
     #   `Base` may be discovered and used at runtime, so they must not be reported dead.
     #   The name is the receiver's (short) constant name.
-    KINDS = %i[method constant method_prefix method_suffix dynamic_namespace dynamic_subclasses].freeze
+    # ivar_write: a source-level instance-variable assignment (`@foo = ...`), recorded per owner so
+    # the analyzer can tell whether a backing ivar is assigned independently of an accessor (used to
+    # flag the Sorbet-ivar hazard when removing the writer half of an attr_accessor).
+    KINDS = %i[method constant method_prefix method_suffix dynamic_namespace dynamic_subclasses ivar_write].freeze
 
     attr_reader :name, :location, :kind, :receiver_type
 

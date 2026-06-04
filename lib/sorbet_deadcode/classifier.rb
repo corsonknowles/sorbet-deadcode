@@ -136,6 +136,9 @@ module SorbetDeadcode
       # One half of an `attr_accessor` whose other half is live: narrow the accessor, don't
       # delete the whole line (issue #137).
       flags << :partial_accessor if definition.partial_accessor
+      # Removing this writer would leave the surviving reader's `@ivar` read-but-unassigned, which
+      # Sorbet reports as an error: keep a typed declaration when narrowing (issue #137).
+      flags << :ivar_hazard if definition.ivar_hazard
       # Became dead only after other dead code was (transitively) removed (issue #136, --cascade).
       flags << :cascaded if definition.cascaded
       flags
@@ -169,6 +172,9 @@ module SorbetDeadcode
       # Public API surface with no in-repo references → review, never auto-delete: an
       # external pack/service or runtime consumer may use it where rg can't see.
       return :review if flags.include?(:public_api)
+      # Narrowing this accessor would orphan the backing `@ivar` (Sorbet error) → review so a
+      # human keeps a typed declaration rather than blindly deleting the writer.
+      return :review if flags.include?(:ivar_hazard)
       # No references anywhere outside the definition. Reaching here means production_ruby,
       # spec_refs and non_ruby are all empty; since every external file falls into exactly
       # one of those buckets, external_count is necessarily 0 here.

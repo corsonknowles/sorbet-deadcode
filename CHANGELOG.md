@@ -10,6 +10,14 @@
   `added:`. ⚠️ **Expensive**: unlike file-scoped `--history`, `dead_since` runs a REPO-WIDE
   `git log -S` pickaxe once per unique name, so it is strictly opt-in, prints a loud upfront cost
   warning plus live per-name progress, and should be scoped to a small candidate set (one pack/file).
+- **`ivar_hazard` flag for partial-accessor writer removal** (#137) — when a dead `attr_writer`
+  half of an `attr_accessor` has a live reader sibling AND the backing `@ivar` is never assigned
+  directly in source (`@foo = …`), removing the writer would leave the surviving reader reading an
+  ivar that is never written — which Sorbet reports as an error. The analyzer now records source-level
+  ivar assignments per owner (new `:ivar_write` reference kind) and flags this case `ivar_hazard`,
+  routing it to `review` (never `safe_delete`) so the fix keeps a typed declaration when narrowing.
+  Only the writer-removal direction is risky; removing the reader half leaves the writer assigning
+  `@ivar`, so it stays typed and is not flagged.
 
 ### Changed
 - **`--history` is now batched per file** (#146) — instead of a pickaxe per candidate
