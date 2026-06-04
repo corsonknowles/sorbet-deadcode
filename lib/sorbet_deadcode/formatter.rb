@@ -36,6 +36,7 @@ module SorbetDeadcode
       entry = "  [#{result.suggested_action}] [#{result.confidence}] #{defn.kind} #{defn.full_name} " \
         "(refs=#{result.external_reference_count}#{flags_suffix(result)})\n    #{defn.location}"
       entry += "\n    added: #{result.added}" if result.added
+      entry += "\n    dead_since: #{result.dead_since}" if result.dead_since
       entry
     end
 
@@ -47,8 +48,8 @@ module SorbetDeadcode
       results.group_by(&:suggested_action).map do |action, group|
         rows = group.map { |result| markdown_row(result) }
         "### #{action} (#{group.size})\n\n" \
-          "| kind | name | location | refs | flags | added |\n" \
-          "| --- | --- | --- | --- | --- | --- |\n" +
+          "| kind | name | location | refs | flags | added | dead_since |\n" \
+          "| --- | --- | --- | --- | --- | --- | --- |\n" +
           rows.join("\n")
       end.join("\n\n")
     end
@@ -57,8 +58,9 @@ module SorbetDeadcode
       defn = result.definition
       flags = result.flags.empty? ? "" : "`#{result.flags.join(', ')}`"
       added = result.added ? "`#{result.added}`" : ""
+      dead_since = result.dead_since ? "`#{result.dead_since}`" : ""
       "| #{defn.kind} | `#{defn.full_name}` | `#{defn.location}` | #{result.external_reference_count} | " \
-        "#{flags} | #{added} |"
+        "#{flags} | #{added} | #{dead_since} |"
     end
 
     def json(results)
@@ -73,6 +75,7 @@ module SorbetDeadcode
           external_reference_count: result.external_reference_count,
           flags: result.flags,
           added: result.added,
+          dead_since: result.dead_since,
         }
       end)
     end

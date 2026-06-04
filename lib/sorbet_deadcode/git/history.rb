@@ -18,19 +18,27 @@ module SorbetDeadcode
       # char). NOT a NUL — an embedded NUL would truncate the --format argv on exec.
       COMMIT_MARKER = "\u0001"
 
-      def initialize(project_root)
+      # @param dead_since [Boolean] also compute the (expensive, repo-wide) `dead_since:` annotation
+      #   — see #prepare_dead_since for the cost. Off by default; the CLI gates it behind --dead-since.
+      def initialize(project_root, dead_since: false)
         @project_root = File.expand_path(project_root)
         # file (absolute) => { name => "<short-sha> <yyyy-mm-dd> <subject>" }
         @introductions = {}
+        @dead_since_enabled = dead_since
+        # name => "dead-on-arrival (...)" | "dead since <commit>" | nil
+        @dead_since = {}
       end
 
-      # Precompute introducing commits for all definitions, one git pass per file.
+      # Precompute introducing commits for all definitions, one git pass per file. When
+      # --dead-since is enabled, ALSO precompute the repo-wide "dead_since" annotation (one pickaxe
+      # per unique name — slow; see #prepare_dead_since).
       # @param definitions [Array<Definition>]
       # @return [self]
       def prepare(definitions)
         definitions.group_by { |definition| File.expand_path(definition.file.to_s) }.each do |file, defs|
           @introductions[file] = introductions(file, defs.map(&:name).uniq)
         end
+        prepare_dead_since(definitions) if @dead_since_enabled
         self
       end
 
@@ -40,7 +48,64 @@ module SorbetDeadcode
         @introductions.dig(File.expand_path(definition.file.to_s), definition.name)
       end
 
+      # @return [String, nil] "dead-on-arrival (<commit>)" when the name's reference count never
+      #   changed after it was introduced (no caller ever shipped), or "dead since <commit>" naming
+      #   the most recent commit that changed the name's repo-wide reference count (≈ when the last
+      #   caller was removed). nil unless --dead-since was enabled.
+      def dead_since(definition)
+        @dead_since[definition.name]
+      end
+
       private
+
+      # ⚠️ EXPENSIVE. Unlike `added` (file-scoped, batched per file), `dead_since` needs a REPO-WIDE
+      # pickaxe (`git log -S name` over all paths) once per unique name to find when the name's last
+      # reference disappeared. On large/deep-history repos each pickaxe can take seconds to minutes,
+      # so this loop can run for a long time — hence opt-in only, a loud upfront warning, and live
+      # per-name progress so a long run is visible rather than a silent hang.
+      def prepare_dead_since(definitions)
+        names = definitions.map(&:name).uniq
+        warn_dead_since_cost(names.size)
+        names.each_with_index do |name, index|
+          $stderr.puts "[sorbet-deadcode] dead-since pickaxe #{index + 1}/#{names.size}: #{name}"
+          @dead_since[name] = compute_dead_since(name)
+        end
+      end
+
+      def warn_dead_since_cost(count)
+        $stderr.puts <<~WARNING
+          [sorbet-deadcode] ⚠️  --dead-since runs a REPO-WIDE git pickaxe (git log -S) once per unique
+          [sorbet-deadcode]     candidate name (#{count} here). On large/deep-history repos each pickaxe
+          [sorbet-deadcode]     can take seconds-to-minutes, so this may run for a LONG time. Scope it to
+          [sorbet-deadcode]     a small candidate set (one pack/file) and prefer plain --history for fast,
+          [sorbet-deadcode]     file-scoped `added:` annotations.
+        WARNING
+      end
+
+      # The newest pickaxe commit ≈ when the name's reference count last changed. A single entry
+      # means the count never changed after introduction → dead on arrival; otherwise the name was
+      # orphaned and the newest commit is approximately when it died.
+      def compute_dead_since(name)
+        lines = pickaxe_commit_lines(name)
+        return nil if lines.empty?
+        return "dead-on-arrival (#{lines.last})" if lines.length == 1
+
+        "dead since #{lines.first}"
+      end
+
+      # Repo-wide `git log -S name` commit lines, newest first. No `-p`, so output is one
+      # "<short-sha> <yyyy-mm-dd> <subject>" line per commit that changed the count of `name`.
+      def pickaxe_commit_lines(name)
+        lines = []
+        IO.popen(
+          ["git", "-C", @project_root, "log", "-S", name,
+           "--format=%h %ad %s", "--date=short"],
+          err: File::NULL,
+        ) { |io| io.each_line { |line| lines << line.strip } }
+        lines
+      rescue StandardError
+        []
+      end
 
       # { name => introducing-commit-line } for the given names, from one --follow -p pass over the
       # file's history (oldest first), recording the first commit that adds each name.

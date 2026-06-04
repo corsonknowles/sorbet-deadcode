@@ -312,6 +312,27 @@ module SorbetDeadcode
       assert_nil classify_one(defn("fresh", location: "#{path}:2")).added
     end
 
+    # #135: --dead-since annotates when a candidate became dead (here: dead on arrival).
+    def test_dead_since_annotates_when_enabled
+      path = write("app/foo.rb", "class Foo\n  def lonely_method; end\nend\n")
+      git_commit_now("app/foo.rb")
+
+      result = nil
+      capture_stderr do
+        result = Classifier.new(project_root: @dir, dead_since: true)
+                           .classify([defn("lonely_method", location: "#{path}:2")]).first
+      end
+
+      assert_includes result.dead_since, "dead-on-arrival"
+    end
+
+    def test_dead_since_nil_by_default
+      path = write("app/foo.rb", "class Foo\n  def fresh; end\nend\n")
+      git_commit_now("app/foo.rb")
+
+      assert_nil classify_one(defn("fresh", location: "#{path}:2")).dead_since
+    end
+
     # #137: a definition the analyzer marked partial_accessor surfaces the flag.
     def test_partial_accessor_flag_is_surfaced
       path = write("app/foo.rb", "class Foo\n  attr_accessor :name\nend\n")
