@@ -76,6 +76,21 @@ module SorbetDeadcode
         )
         new_source = ::Spoom::Deadcode::Remover.new(context).remove_location(nil, location)
 
+        # Safety net: spoom's remover can over-delete preceding siblings when the target sits in a
+        # contiguous run of trailing-comment lines (it mis-attaches their comments). Refuse to apply
+        # a removal that would also delete a definition we didn't classify as dead. See RemovalGuard.
+        collateral = RemovalGuard.collateral_definitions(
+          source, new_source,
+          target_full_name: definition.full_name,
+          co_located_names: definition.co_located_names,
+          file: rel,
+        )
+        unless collateral.empty?
+          return result(definition, :failed,
+                        "refused: removal would also delete #{collateral.join(', ')} " \
+                        "(spoom over-attached adjacent comments); skipped to avoid removing live code")
+        end
+
         if apply
           context.write!(rel, new_source)
           result(definition, :removed, rel)

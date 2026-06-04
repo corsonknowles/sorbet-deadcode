@@ -73,6 +73,37 @@ module SorbetDeadcode
         end
       end
 
+      # Regression: spoom's remover over-deletes preceding siblings in a contiguous run of
+      # trailing-comment constants. The RemovalGuard must catch this and refuse to apply, leaving
+      # the live siblings (LIVE_A, LIVE_B) intact rather than silently deleting them.
+      def test_refuses_removal_that_would_delete_live_siblings
+        with_file(<<~RUBY) do |dir, path|
+          module Vals
+            LIVE_A = 'a' # note
+            LIVE_B = 'b' # note
+            DEAD_C = 'c' # note
+          end
+        RUBY
+          defn = Definition.new(name: "DEAD_C", full_name: "Vals::DEAD_C", kind: :constant, location: "#{path}:4")
+          results = Remover.remove([defn], project_root: dir, apply: true)
+
+          source = File.read(path)
+          if results.first.status == :removed
+            # spoom removed precisely the target — guard correctly stayed out of the way.
+            assert_includes source, "LIVE_A", "must not delete the live sibling"
+            assert_includes source, "LIVE_B", "must not delete the live sibling"
+            refute_includes source, "DEAD_C"
+          else
+            # spoom over-attached the siblings' comments → guard refused to apply (file unchanged).
+            assert_equal :failed, results.first.status
+            assert_includes results.first.detail, "would also delete"
+            assert_includes source, "LIVE_A"
+            assert_includes source, "LIVE_B"
+            assert_includes source, "DEAD_C", "nothing written when the removal is refused"
+          end
+        end
+      end
+
       private
 
       def with_file(contents)
