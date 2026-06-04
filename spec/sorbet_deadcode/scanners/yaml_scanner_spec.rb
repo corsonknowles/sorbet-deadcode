@@ -183,6 +183,19 @@ module SorbetDeadcode
         assert_includes result, "tracked_method"
         refute_includes result, "untracked_method"
       end
+
+      def test_bare_keys_skips_non_matching_lines_and_non_bare_values
+        write("config/jobs.yml", <<~YAML)
+          processor: do_thing
+          processor: SomeClass
+          other: irrelevant
+        YAML
+        # `other:` line doesn't match the bare matcher (m nil); `SomeClass` matches the key
+        # but isn't a valid bare method name (BARE fails, b nil); only `do_thing` is emitted.
+        names = method_names(bare_keys: ["processor"])
+        assert_includes names, "do_thing"
+        refute_includes names, "SomeClass"
+      end
     end
   end
 end

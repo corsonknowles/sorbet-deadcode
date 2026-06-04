@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Changed
+- **Branch coverage is now held at 100%** (floor raised from 96%). Audited the previously
+  "uncoverable defensive guard" branches: most were ordinary negative-case arms now covered by
+  targeted tests, and a few were provably unreachable and removed/refactored:
+  - `RouteScanner#emit_to_reference` dropped a `return unless action` that can't fire (the caller
+    only passes `"#"`-containing strings) and a redundant `&.` whose nil-arm was unreachable.
+  - `Classifier#action_for` simplified a ternary whose `:review` arm was unreachable (by that point
+    every external reference has already been bucketed, so the count is always zero) — also drops a
+    now-unused parameter.
+  - `DeadCodeAnalyzer#compute_alive_inline_constants` uses `filter_map` instead of a nil-guard whose
+    false arm couldn't occur (nested inline constants are always collected).
+
 ### Fixed
 - **Same-file references no longer missed** (#130) — two false positives where a definition
   referenced only from elsewhere in the *same file* was reported dead:
@@ -14,6 +26,15 @@
     the owner is the fully-qualified `A::B::Foo`. Typed-reference matching now also matches an
     unqualified receiver to a namespaced owner by demodulized suffix (restricted to unqualified
     receivers, so fully-qualified calls stay precisely scoped).
+- **`delegate ..., to: :reader` now counts as a reference to the target** (#129) — the collector
+  recorded the delegated method names and the `prefix:` option but ignored the `to:` target. A
+  method/`attr_reader` used *only* as a `delegate :foo, to: :reader` target (the reader is invoked at
+  runtime to obtain the delegation receiver) was therefore reported dead. The symbol form now emits a
+  method reference for the target; the string/constant forms (`to: "Klass"` / `to: SomeConst`) are
+  left to the normal constant handling.
+- **`RouteRefiner` early-out never fired** — it guarded on `routed.empty?`, but `build_routed_set`
+  always returns a `{methods:, classes:}` Hash (never an empty Hash), so the no-routes fast path was
+  dead. It now checks the underlying sets, matching `RablRefiner`.
 
 ### Added
 - **Wrong-project-root guard** — the CLI now warns when analysis paths fall *outside* the resolved

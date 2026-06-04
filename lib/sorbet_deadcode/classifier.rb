@@ -73,7 +73,7 @@ module SorbetDeadcode
 
       flags = build_flags(definition, spec_refs, non_ruby, production_ruby)
       confidence = confidence_for(external_count, flags)
-      action = action_for(external_count, production_ruby, spec_refs, non_ruby, flags)
+      action = action_for(production_ruby, spec_refs, non_ruby, flags)
 
       # A refiner in :report mode kept this candidate (referenced only from a non-Ruby
       # source it scans). Surface why, and downgrade to a low-confidence review.
@@ -119,7 +119,7 @@ module SorbetDeadcode
       Analyzer::Confidence::MEDIUM # spec-only references
     end
 
-    def action_for(external_count, production_ruby, spec_refs, non_ruby, flags)
+    def action_for(production_ruby, spec_refs, non_ruby, flags)
       # Real production references → the candidate is actually used; keep it.
       return :keep if production_ruby.any?
       # Referenced from non-Ruby files (routes/YAML/ERB/.graphql) → needs a human look.
@@ -128,8 +128,10 @@ module SorbetDeadcode
       return :delete_with_spec if spec_refs.any?
       # Inline constant side-effect (PARENT = [CHILD = ...]) → review removal carefully.
       return :review if flags.include?(:inline_constant)
-      # No references anywhere outside the definition.
-      external_count.zero? ? :safe_delete : :review
+      # No references anywhere outside the definition. Reaching here means production_ruby,
+      # spec_refs and non_ruby are all empty; since every external file falls into exactly
+      # one of those buckets, external_count is necessarily 0 here.
+      :safe_delete
     end
 
     # Returns { name => { path => occurrence_count } } for all matching files.

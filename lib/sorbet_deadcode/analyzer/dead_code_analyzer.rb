@@ -290,12 +290,14 @@ module SorbetDeadcode
         @definitions.each do |definition|
           next unless definition.kind == :constant && definition.co_located_names.any?
 
-          members = [definition]
-          definition.co_located_names.each do |child|
+          # Nested inline constants are always collected (with the same owner as the parent),
+          # so every lookup resolves; filter_map drops any (structurally-unexpected) miss
+          # without an unreachable nil-guard branch.
+          child_members = definition.co_located_names.filter_map do |child|
             child_full = definition.owner_name ? "#{definition.owner_name}::#{child}" : child
-            child_def = by_full[child_full]
-            members << child_def if child_def
+            by_full[child_full]
           end
+          members = [definition, *child_members]
 
           next unless members.any? { |m| ref_index[:constants].include?(m.name) || ref_index[:constants].include?(m.full_name) }
 

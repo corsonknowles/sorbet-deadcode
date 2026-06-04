@@ -1249,6 +1249,24 @@ module SorbetDeadcode
         assert_includes dead, "B::Target#foo"
       end
 
+      # #129: an attr_reader referenced only as a `delegate ..., to: :reader` target is alive.
+      def test_attr_reader_used_only_as_delegate_target_is_alive
+        analyzer = analyze_source(<<~RUBY)
+          class ReportBuilder
+            attr_reader :writer
+
+            delegate :to_s, to: :writer
+
+            def initialize(writer)
+              @writer = writer
+            end
+          end
+        RUBY
+
+        dead_names = analyzer.dead_definitions.map(&:name)
+        refute_includes dead_names, "writer"
+      end
+
       private
 
       def analyze_source(source)

@@ -115,6 +115,12 @@ module SorbetDeadcode
         refute_includes names, "display_name"
         assert_includes names, "truly_dead"
       end
+
+      def test_refine_returns_candidates_unchanged_when_no_rabl_references
+        # No .rabl templates under @dir → build_referenced_set is empty.
+        defn = make_def("anything")
+        assert_equal [defn], refiner.refine([defn])
+      end
     end
   end
 end

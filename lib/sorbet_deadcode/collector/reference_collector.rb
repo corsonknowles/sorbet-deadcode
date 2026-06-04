@@ -474,19 +474,22 @@ module SorbetDeadcode
         end
       end
 
-      # `delegate :foo, :bar, to: :target` — foo= and bar are dispatched by ActiveSupport.
+      # `delegate :foo, :bar, to: :target` — foo/bar are dispatched by ActiveSupport, and
+      # `target` is invoked on `self` to obtain the receiver (so it's a reference too).
       # Optionally `prefix: true` or `prefix: :target` changes the generated name.
       def collect_delegate_references(node, location)
         prefix = nil
         node.arguments.arguments.each do |arg|
-          if arg.is_a?(Prism::KeywordHashNode)
-            arg.elements.each do |assoc|
-              next unless assoc.is_a?(Prism::AssocNode)
+          next unless arg.is_a?(Prism::KeywordHashNode)
 
-              key = assoc.key.slice.delete_suffix(":")
-              next unless key == "prefix"
+          arg.elements.each do |assoc|
+            next unless assoc.is_a?(Prism::AssocNode)
 
-              val = assoc.value
+            key = assoc.key.slice.delete_suffix(":")
+            val = assoc.value
+
+            case key
+            when "prefix"
               prefix = if val.is_a?(Prism::TrueNode)
                 # `prefix: true` → method name is inferred from :to value; we
                 # conservatively emit a method_prefix reference so all prefixed
@@ -494,6 +497,13 @@ module SorbetDeadcode
                 :true_prefix
               elsif val.is_a?(Prism::SymbolNode)
                 val.unescaped
+              end
+            when "to"
+              # `to: :reader` calls `reader` on `self` at load/runtime to get the delegation
+              # target — a real reference (commonly an attr_reader). Only the symbol form names
+              # a self method; `to: "Klass"`/`to: SomeConst` name a constant handled elsewhere.
+              if val.is_a?(Prism::SymbolNode)
+                @references << Reference.new(name: val.unescaped, location: location, kind: :method)
               end
             end
           end
@@ -756,7 +766,8 @@ module SorbetDeadcode
       # (`obj.foo ||= x`, `obj.foo += 1`): both `foo` and `foo=` are invoked.
       def emit_call_write_references(node)
         location = format_location(node.location)
-        receiver_type = node.receiver ? resolve_receiver_type(node.receiver) : nil
+        # A call-operator-write (`recv.msg op= val`) always has an explicit receiver.
+        receiver_type = resolve_receiver_type(node.receiver)
         [node.read_name.to_s, node.write_name.to_s].each do |method_name|
           @references << Reference.new(name: method_name, location: location, kind: :method, receiver_type: receiver_type)
         end
