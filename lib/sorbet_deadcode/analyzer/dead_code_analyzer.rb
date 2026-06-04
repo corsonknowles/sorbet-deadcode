@@ -332,7 +332,22 @@ module SorbetDeadcode
         typed_refs = ref_index[:typed_by_name][definition.name]
         return false unless typed_refs
 
-        typed_refs.any? { |receiver_type| receiver_type == definition.owner_name }
+        owner = definition.owner_name
+        typed_refs.any? { |receiver_type| receiver_type_matches?(receiver_type, owner) }
+      end
+
+      # Whether a typed reference's receiver type identifies this definition's owner.
+      # Exact match is the precise case. An UNQUALIFIED constant receiver (`Foo.bar`, no
+      # `::`) is written relative to its lexical scope, so the collector records the bare
+      # name `Foo` even though the call resolves to a namespaced `A::B::Foo` (e.g. a nested
+      # or sibling class calling its enclosing class). Match such a bare receiver to a
+      # namespaced owner by demodulized suffix. Restricted to unqualified receivers so a
+      # fully-qualified call (`A::Foo.bar`) stays precisely scoped; erring toward "alive" is
+      # the safe direction for a dead-code tool and matches the demodulized-name matching
+      # used elsewhere (e.g. reflected subclasses).
+      def receiver_type_matches?(receiver_type, owner_name)
+        receiver_type == owner_name ||
+          (!receiver_type.include?("::") && owner_name.end_with?("::#{receiver_type}"))
       end
 
       # Name-based liveness: fallback when typed evidence is inconclusive.

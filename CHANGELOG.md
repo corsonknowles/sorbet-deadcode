@@ -15,6 +15,17 @@
     false arm couldn't occur (nested inline constants are always collected).
 
 ### Fixed
+- **Same-file references no longer missed** (#130) — two false positives where a definition
+  referenced only from elsewhere in the *same file* was reported dead:
+  - A class used **only as a superclass** (`class Child < Parent`) was reported dead. The
+    self-reference suppression keyed on the *line* of the class name, which also swallowed the
+    superclass sharing that line. It now keys on the name node's precise byte-offset span, so the
+    superclass (and any other constant on the line) is emitted as a real reference.
+  - A method invoked through an **unqualified constant receiver** (`Foo.bar`) from a nested or
+    sibling class was reported dead, because the receiver was recorded as the bare name `Foo` while
+    the owner is the fully-qualified `A::B::Foo`. Typed-reference matching now also matches an
+    unqualified receiver to a namespaced owner by demodulized suffix (restricted to unqualified
+    receivers, so fully-qualified calls stay precisely scoped).
 - **`delegate ..., to: :reader` now counts as a reference to the target** (#129) — the collector
   recorded the delegated method names and the `prefix:` option but ignored the `to:` target. A
   method/`attr_reader` used *only* as a `delegate :foo, to: :reader` target (the reader is invoked at
