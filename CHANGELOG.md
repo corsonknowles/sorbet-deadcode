@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+- **Public-API caution flag** (#138) — definitions on a public API surface (default: Packwerk's
+  `app/public/`) are flagged `public_api` and routed to `review` instead of `safe_delete` when they
+  have no in-repo references, since external packs/services or runtime consumers (federation,
+  `constantize`) are invisible to static analysis. Configure or disable with `--public-paths`
+  (`--public-paths none` to turn off; comma-separated fragments otherwise).
+
 ### Changed
 - **Branch coverage is now held at 100%** (floor raised from 96%). Audited the previously
   "uncoverable defensive guard" branches: most were ordinary negative-case arms now covered by

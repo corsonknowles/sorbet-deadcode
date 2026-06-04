@@ -43,6 +43,7 @@ options = {
   classify: false,
   only_action: nil,
   recent_within: 30 * 86_400,
+  public_paths: nil,
   plain: false,
   report_dynamic_dispatch: false,
   report_non_ruby: false,
@@ -178,6 +179,14 @@ OptionParser.new do |opts|
     "recently-added: flag them and route to review instead of safe_delete. Uses git",
     "line history. Pass 0/all to disable.") do |value|
     options[:recent_within] = parse_max_age(value)
+  end
+
+  opts.on("--public-paths LIST",
+    "Comma-separated path fragments treated as a public API surface (default:",
+    "app/public/). Zero-reference definitions there are flagged public_api and routed to",
+    "review instead of safe_delete (external/runtime consumers are invisible to rg).",
+    "Pass 'none' to disable.") do |list|
+    options[:public_paths] = %w[none off].include?(list.strip.downcase) ? [] : list.split(",").map(&:strip).reject(&:empty?)
   end
 
   opts.on("--plain",
@@ -481,6 +490,7 @@ if do_classify
     project_root: options[:project_root],
     exclude_paths: options[:exclude_paths],
     recent_within: options[:recent_within],
+    public_paths: options[:public_paths] || SorbetDeadcode::Classifier::DEFAULT_PUBLIC_PATHS,
   )
   classified = classifier.classify(results)
 

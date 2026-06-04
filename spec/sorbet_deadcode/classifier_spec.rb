@@ -256,5 +256,41 @@ module SorbetDeadcode
       assert_equal 2, result.reference_count        # definition + 1 caller
       assert_equal 1, result.external_reference_count
     end
+
+    # #138: a zero-reference definition on a public API surface is a review prompt, not a
+    # safe delete (external/runtime consumers are invisible to in-repo analysis).
+    def test_public_api_definition_routed_to_review
+      path = write("packs/x/app/public/widget.rb", "class Widget\n  def export\n  end\nend\n")
+      result = classify_one(defn("export", location: "#{path}:2"))
+
+      assert_includes result.flags, :public_api
+      assert_equal :review, result.suggested_action
+      assert_equal Analyzer::Confidence::LOW, result.confidence
+    end
+
+    def test_non_public_definition_still_safe_delete
+      path = write("packs/x/app/services/widget.rb", "class Widget\n  def export\n  end\nend\n")
+      result = classify_one(defn("export", location: "#{path}:2"))
+
+      refute_includes result.flags, :public_api
+      assert_equal :safe_delete, result.suggested_action
+    end
+
+    def test_public_api_definition_with_production_reference_is_kept
+      path = write("packs/x/app/public/widget.rb", "class Widget\n  def export\n  end\nend\n")
+      write("packs/y/app/services/caller.rb", "Widget.new.export\n")
+      result = classify_one(defn("export", location: "#{path}:2"))
+
+      assert_equal :keep, result.suggested_action
+    end
+
+    def test_public_paths_can_be_disabled
+      path = write("packs/x/app/public/widget.rb", "class Widget\n  def export\n  end\nend\n")
+      result = Classifier.new(project_root: @dir, public_paths: [])
+                         .classify([defn("export", location: "#{path}:2")]).first
+
+      refute_includes result.flags, :public_api
+      assert_equal :safe_delete, result.suggested_action
+    end
   end
 end

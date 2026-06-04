@@ -22,12 +22,21 @@ module SorbetDeadcode
     # Matches files under spec/ or test/ directories, or *_spec.rb / *_test.rb.
     SPEC_PATH = %r{(?:^|/)(?:spec|test)/|_(?:spec|test)\.rb$}
 
-    def initialize(project_root:, exclude_paths: [], recent_within: nil)
+    # Default public-surface path fragments. Packwerk exposes a pack's public API under
+    # `app/public/`; definitions there may be consumed by other packs/services or at runtime
+    # in ways the in-repo static graph can't see, so a zero-reference result is only a prompt
+    # for review — never a safe delete.
+    DEFAULT_PUBLIC_PATHS = ["/app/public/"].freeze
+
+    def initialize(project_root:, exclude_paths: [], recent_within: nil, public_paths: DEFAULT_PUBLIC_PATHS)
       @project_root = File.expand_path(project_root)
       @exclude_paths = exclude_paths
       # When set (seconds), candidates whose definition line was introduced within the
       # window are flagged :recently_added and routed to review (issue #19).
       @recency = recent_within && Git::Recency.new(@project_root, recent_within)
+      # Path fragments marking a public API surface (issue #138). Definitions there are
+      # downgraded from safe_delete to review since external/runtime consumers are invisible.
+      @public_paths = Array(public_paths)
     end
 
     # @param candidates [Array<Definition>]
@@ -109,10 +118,22 @@ module SorbetDeadcode
       flags << :spec_only if spec_refs.any? && production_ruby.empty? && non_ruby.empty?
       flags << :non_ruby_reference if non_ruby.any?
       flags << :live_reference if production_ruby.any?
+      # Defined on a public API surface (e.g. Packwerk app/public/): external/runtime
+      # consumers are invisible to in-repo analysis, so caution even at zero references.
+      flags << :public_api if public_api?(definition)
       flags
     end
 
+    # True when the definition lives on a configured public-API surface.
+    def public_api?(definition)
+      path = definition.file.to_s
+      @public_paths.any? { |fragment| path.include?(fragment) }
+    end
+
     def confidence_for(external_count, flags)
+      # Public-API surface: never high confidence — a zero-reference result can't see
+      # external/runtime consumers, so it's a review prompt, not a safe delete.
+      return Analyzer::Confidence::LOW if flags.include?(:public_api)
       return Analyzer::Confidence::HIGH if external_count.zero?
       return Analyzer::Confidence::LOW if flags.include?(:live_reference) || flags.include?(:non_ruby_reference)
 
@@ -128,6 +149,9 @@ module SorbetDeadcode
       return :delete_with_spec if spec_refs.any?
       # Inline constant side-effect (PARENT = [CHILD = ...]) → review removal carefully.
       return :review if flags.include?(:inline_constant)
+      # Public API surface with no in-repo references → review, never auto-delete: an
+      # external pack/service or runtime consumer may use it where rg can't see.
+      return :review if flags.include?(:public_api)
       # No references anywhere outside the definition. Reaching here means production_ruby,
       # spec_refs and non_ruby are all empty; since every external file falls into exactly
       # one of those buckets, external_count is necessarily 0 here.
