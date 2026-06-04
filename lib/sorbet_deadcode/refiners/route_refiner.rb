@@ -29,7 +29,9 @@ module SorbetDeadcode
         return dead_candidates if dead_candidates.empty?
 
         routed = build_routed_set
-        return dead_candidates if routed.empty?
+        # build_routed_set always returns a {methods:, classes:} hash (never an empty Hash),
+        # so guard on the sets actually being empty — i.e. no routes contributed anything.
+        return dead_candidates if routed[:methods].empty? && routed[:classes].empty?
 
         resolve(dead_candidates) { |d| routed_alive?(d, routed) }
       end

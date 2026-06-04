@@ -229,7 +229,9 @@ module SorbetDeadcode
       end
 
       def visit_block_children(node)
-        return unless node.block.respond_to?(:body) && node.block&.body
+        # `respond_to?(:body)` already guarantees a non-nil BlockNode, so `.body` is safe
+        # (a redundant `&.` here would add an unreachable nil-receiver branch).
+        return unless node.block.respond_to?(:body) && node.block.body
 
         visit(node.block.body)
       end
@@ -237,9 +239,9 @@ module SorbetDeadcode
       # Parse `'controller#action'` or `'namespace/controller#action'`
       # and emit a typed method reference.
       def emit_to_reference(to_string, location)
+        # Only called when `to_string` contains "#", so split always yields an action
+        # (emit_controller_action still guards the nil case for its other caller).
         controller_part, action = to_string.split("#", 2)
-        return unless action
-
         emit_controller_action(controller_class_name(controller_part, namespace: @namespace_stack), action, location)
       end
 

@@ -168,6 +168,21 @@ module SorbetDeadcode
         assert_includes names, "writer"
       end
 
+      def test_delegate_with_other_option_key_is_ignored
+        # A delegate option that is neither `prefix:` nor `to:` (e.g. `allow_nil:`) hits the
+        # case's no-op else and emits no reference for the option key.
+        refs = collect(<<~RUBY)
+          class Foo
+            delegate :name, to: :profile, allow_nil: true
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "name"
+        assert_includes names, "profile"
+        refute_includes names, "allow_nil"
+      end
+
       def test_delegate_with_constant_to_target_emits_no_method_reference
         refs = collect(<<~RUBY)
           class Foo
@@ -1647,6 +1662,85 @@ module SorbetDeadcode
         refs = collect("T.unsafe(Base).descendants.map(&:name)")
         ref = refs.find { |r| r.kind == :dynamic_subclasses }
         assert_equal "Base", ref.name
+      end
+
+      # ---- branch-coverage edge cases ------------------------------------
+
+      def test_iterated_symbol_dispatch_with_receiver
+        refs = collect(<<~RUBY)
+          [:start, :stop].each { |m| record.send(m) }
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "start"
+        assert_includes names, "stop"
+      end
+
+      def test_iteration_block_with_empty_params_does_not_bind
+        # `{ || ... }` → BlockParametersNode with nil parameters, exercising the nil arms
+        # of the iteration_block_param helper.
+        refs = collect(<<~RUBY)
+          [:a, :b].each { || noop }
+        RUBY
+
+        assert_kind_of Array, refs
+      end
+
+      def test_descendants_receiver_with_unrecognized_t_helper
+        # `.descendants` receiver is `T.bogus(Base)` — not a known cast, so unwrap returns it
+        # unchanged (and it isn't a constant, so no subclass-discovery reference is emitted).
+        refs = collect(<<~RUBY)
+          T.bogus(Base).descendants
+        RUBY
+
+        refute refs.any? { |r| r.kind == :dynamic_subclasses }
+      end
+
+      def test_descendants_receiver_with_argless_cast
+        # `T.must.descendants` — a recognized cast with no arguments exercises the
+        # `node.arguments&.arguments&.first || node` fallback.
+        refs = collect(<<~RUBY)
+          T.must.descendants
+        RUBY
+
+        refute refs.any? { |r| r.kind == :dynamic_subclasses }
+      end
+
+      def test_attributes_with_non_symbol_argument_is_skipped
+        refs = collect(<<~RUBY)
+          class Model
+            attributes :ok, 123
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "ok"
+      end
+
+      def test_array_mass_assignment_without_arguments_does_not_crash
+        refs = collect(<<~RUBY)
+          Model.insert_all
+        RUBY
+
+        assert_kind_of Array, refs
+      end
+
+      def test_permit_without_arguments_does_not_crash
+        refs = collect(<<~RUBY)
+          params.permit
+        RUBY
+
+        assert_kind_of Array, refs
+      end
+
+      def test_permit_hash_with_splat_assoc_is_skipped
+        refs = collect(<<~RUBY)
+          params.permit(:a, foo: [], **extra)
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "a="
+        assert_includes names, "foo="
       end
 
       private

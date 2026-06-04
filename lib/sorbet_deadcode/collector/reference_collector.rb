@@ -762,7 +762,8 @@ module SorbetDeadcode
       # (`obj.foo ||= x`, `obj.foo += 1`): both `foo` and `foo=` are invoked.
       def emit_call_write_references(node)
         location = format_location(node.location)
-        receiver_type = node.receiver ? resolve_receiver_type(node.receiver) : nil
+        # A call-operator-write (`recv.msg op= val`) always has an explicit receiver.
+        receiver_type = resolve_receiver_type(node.receiver)
         [node.read_name.to_s, node.write_name.to_s].each do |method_name|
           @references << Reference.new(name: method_name, location: location, kind: :method, receiver_type: receiver_type)
         end

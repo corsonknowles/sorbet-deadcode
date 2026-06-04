@@ -112,6 +112,31 @@ module SorbetDeadcode
       def test_returns_empty_when_no_rabl_files
         assert_empty refs
       end
+
+      def test_child_hash_with_splat_assoc_is_skipped
+        write("app/views/show.json.rabl", <<~RABL)
+          child(:parts, alias_key: :a, **opts) { attribute :sku }
+        RABL
+        # **opts is an AssocSplatNode (skipped); the symbol-keyed entry still resolves.
+        assert_includes method_names, "parts"
+        assert_includes method_names, "alias_key"
+      end
+
+      def test_child_hash_with_non_symbol_key_is_skipped
+        write("app/views/show.json.rabl", <<~RABL)
+          child(:parts, "string_key" => :a) { attribute :sku }
+        RABL
+        # "string_key" is a StringNode key → skipped; :parts still emits.
+        assert_includes method_names, "parts"
+        refute_includes method_names, "string_key"
+      end
+
+      def test_attribute_dsl_call_without_arguments_does_not_crash
+        # Bare `attributes` (no args) exercises the no-arguments arm of the DSL `arguments`
+        # helper. (Pass A's ReferenceCollector still records the bare call itself.)
+        write("app/views/show.json.rabl", "attributes\n")
+        assert_kind_of Array, refs
+      end
     end
   end
 end
