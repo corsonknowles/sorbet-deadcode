@@ -3,6 +3,14 @@
 ## Unreleased
 
 ### Fixed
+- **`--remove` no longer silently deletes live code adjacent to a dead candidate** — spoom's
+  `Deadcode::Remover` over-deletes when the target sits in a contiguous run of trailing-comment
+  lines (e.g. several `CONST = value # note` lines with no blank separators): it mis-attaches the
+  PRECEDING siblings' trailing comments to the target and removes those siblings too. A new
+  `RemovalGuard` re-parses the before/after sources and refuses to apply (reports `:failed`) any
+  removal that would delete a definition other than the target or its nested/inline members, so a
+  removal can never take out code the classifier kept. Found dogfooding a payments constants module
+  where removing one dead constant would have deleted three live siblings.
 - **Methods defined inside `class_eval`/`instance_eval` blocks are no longer false positives** (#155)
   — a method defined inside a `klass.class_eval do def m; … end end` block (and the
   `module_eval`/`*_exec` family) is dynamically injected onto another class and invoked on that
