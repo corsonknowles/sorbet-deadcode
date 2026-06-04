@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+- **`--format` output formats** (#139) — the classified view can render as `text` (default),
+  `markdown` (PR-ready tables grouped by suggested action), or `json` (machine-readable, for
+  piping). The summary line is written to stderr so stdout stays clean for redirection. Rendering
+  lives in a unit-tested `SorbetDeadcode::Formatter`.
+
 ### Changed
 - **Branch coverage is now held at 100%** (floor raised from 96%). Audited the previously
   "uncoverable defensive guard" branches: most were ordinary negative-case arms now covered by
