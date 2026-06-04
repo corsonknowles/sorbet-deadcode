@@ -54,6 +54,10 @@ module SorbetDeadcode
         return candidates.map { |defn| unverified_result(defn) }
       end
 
+      # Precompute introducing commits once (batched per file) so classify_one can annotate
+      # each result without a per-candidate git invocation (issue #146).
+      @history&.prepare(candidates)
+
       refs = reference_files_by_name(candidates.map(&:name).uniq)
       candidates.map { |defn| classify_one(defn, refs[defn.name] || {}) }
     end
