@@ -31,10 +31,13 @@ module SorbetDeadcode
       DELEGATE_DSL_METHODS = %w[delegate].to_set.freeze
 
       # AASM `event :activate, after: [:notify], guard: :can_activate?` dispatches
-      # symbol names as callbacks or guards. Also handles `error_on_all_events :method`.
+      # symbol names as callbacks or guards. Also handles `error_on_all_events :method` and the
+      # per-transition `transitions from: :a, to: :b, after: :cb, success: :cb2, guard: :ok?` form
+      # (its after/success/guard/etc. keys carry method names; from/to are state names, ignored
+      # because they aren't AASM_CALLBACK_KEYS).
       AASM_DSL_METHODS = %w[
         error_on_all_events
-        aasm_event event
+        aasm_event event transitions
       ].to_set.freeze
 
       # AASM event option keys whose value is a method name (or array of them) dispatched
@@ -665,6 +668,13 @@ module SorbetDeadcode
           # `validates :x, strong_password: true` resolves to a `StrongPasswordValidator` class
           # instantiated by ActiveModel; keep that validator constant alive.
           @references << Reference.new(name: "#{camelize(key)}Validator", location: location, kind: :constant)
+        end
+
+        # if:/unless: can be nested inside a validator's option hash, e.g.
+        # `validates :x, exclusion: { in: [...], unless: :skip? }`. Recurse into hash-valued
+        # options so the nested conditional method is kept alive too.
+        if handler.conditional_options? && (assoc.value.is_a?(Prism::HashNode) || assoc.value.is_a?(Prism::KeywordHashNode))
+          assoc.value.elements.each { |inner| apply_send_handler_option(handler, inner, location) }
         end
       end
 

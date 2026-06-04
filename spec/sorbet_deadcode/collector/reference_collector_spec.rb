@@ -240,6 +240,25 @@ module SorbetDeadcode
         assert_includes refs.select { |r| r.kind == :method }.map(&:name), "can_activate?"
       end
 
+      # #149: callbacks on the per-transition `transitions` line (after/success/guard) are dispatched.
+      def test_aasm_transitions_callbacks_emit_references
+        refs = collect(<<~RUBY)
+          class Order
+            event :activate do
+              transitions from: :pending, to: :active, after: :set_active_date, success: :notify, guard: :ready?
+            end
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "set_active_date"
+        assert_includes names, "notify"
+        assert_includes names, "ready?"
+        # `from:`/`to:` are state names, not methods.
+        refute_includes names, "pending"
+        refute_includes names, "active"
+      end
+
       def test_aasm_event_transaction_and_other_callbacks_emit_references
         refs = collect(<<~RUBY)
           class Order
@@ -546,6 +565,17 @@ module SorbetDeadcode
         assert_includes names, "bonus_only"                   # positional method (custom validation)
         assert_includes names, "off_cycle_bonus_only_payroll?" # if: conditional
         assert_includes names, "skip_check?"                  # unless: conditional
+      end
+
+      # #149: if:/unless: nested inside a validator option hash are dispatched too.
+      def test_validates_nested_conditional_in_option_hash_emits_reference
+        refs = collect(<<~RUBY)
+          class Model
+            validates :source, exclusion: { in: FALLBACK_SOURCES, unless: :eoy_fy19? }, presence: true
+          end
+        RUBY
+
+        assert_includes refs.select { |r| r.kind == :method }.map(&:name), "eoy_fy19?"
       end
 
       def test_validates_conditional_emitted_but_attribute_is_not
