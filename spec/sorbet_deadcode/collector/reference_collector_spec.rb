@@ -1795,6 +1795,42 @@ module SorbetDeadcode
         assert_includes names, "foo="
       end
 
+      # #147: ActiveAdmin helper modules + controllers are framework-invoked.
+      def test_active_admin_helper_module_marks_namespace_dynamic
+        refs = collect_at_path("app/helpers/active_admin/referrals_helper.rb", <<~RUBY)
+          module ActiveAdmin
+            module ReferralsHelper
+              def calculate_amount; end
+            end
+          end
+        RUBY
+
+        assert refs.any? { |r| r.kind == :dynamic_namespace && r.name == "ActiveAdmin::ReferralsHelper" },
+          "AA helper module should be kept alive via the active_admin convention"
+      end
+
+      def test_active_admin_controller_marks_namespace_dynamic
+        refs = collect(<<~RUBY)
+          class CompaniesController < ActiveAdmin::ResourceController
+            def scoped_collection; end
+          end
+        RUBY
+
+        assert refs.any? { |r| r.kind == :dynamic_namespace }
+      end
+
+      def test_non_active_admin_helper_module_is_not_kept
+        # A `*Helper` module OUTSIDE an active_admin path must not match (path gate) — ordinary
+        # Rails helpers are view-invoked and handled by the ERB scanner, not this convention.
+        refs = collect_at_path("app/helpers/widgets_helper.rb", <<~RUBY)
+          module WidgetsHelper
+            def widget_tag; end
+          end
+        RUBY
+
+        refute refs.any? { |r| r.kind == :dynamic_namespace }
+      end
+
       private
 
       def collect(source, type_resolver: nil, conventions: nil)

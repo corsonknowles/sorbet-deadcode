@@ -110,6 +110,18 @@ module SorbetDeadcode
           #   2. a `*Preview` class name living in a mailer_preview(s) path.
           Convention.new(name: "mailer_preview", superclass: /Preview/, name_suffix: "MailerPreview", keep_namespace: true),
           Convention.new(name: "mailer_preview_path", name_suffix: "Preview", path_includes: "mailer_preview", keep_namespace: true),
+
+          # ActiveAdmin: controllers' public methods are actions/DSL hooks invoked via routing, and
+          # AA helper modules (e.g. `ActiveAdmin::FooHelper` under app/helpers/active_admin/) are
+          # invoked from arbre views / register blocks the analyzer doesn't scan. Keep both alive.
+          # Matches AA controllers by superclass OR `*Helper` modules in an active_admin path.
+          Convention.new(
+            name: "active_admin",
+            superclass: /ActiveAdmin::(Base|Resource|Page)Controller/,
+            name_suffix: "Helper",
+            path_includes: "active_admin",
+            keep_namespace: true,
+          ),
         ].freeze
       end
 
