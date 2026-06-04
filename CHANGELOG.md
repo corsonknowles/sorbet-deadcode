@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Fixed
+- **Methods defined inside `class_eval`/`instance_eval` blocks are no longer false positives** (#155)
+  — a method defined inside a `klass.class_eval do def m; … end end` block (and the
+  `module_eval`/`*_exec` family) is dynamically injected onto another class and invoked on that
+  host's instances, which the tool can't resolve. The definition collector now skips method
+  definitions nested inside such blocks, so they're never reported dead.
+
 ### Added
 - **`--dead-since` annotation** (#135) — the `dead_since:` half of the history feature. For each
   candidate it reports whether the symbol was **dead on arrival** (its repo-wide reference count
