@@ -3,6 +3,13 @@
 ## Unreleased
 
 ### Added
+- **`--dead-since` annotation** (#135) — the `dead_since:` half of the history feature. For each
+  candidate it reports whether the symbol was **dead on arrival** (its repo-wide reference count
+  never changed after the introducing commit) or **orphaned**, naming the most recent commit that
+  changed the count (≈ when the last caller was removed). Surfaced in text/markdown/json alongside
+  `added:`. ⚠️ **Expensive**: unlike file-scoped `--history`, `dead_since` runs a REPO-WIDE
+  `git log -S` pickaxe once per unique name, so it is strictly opt-in, prints a loud upfront cost
+  warning plus live per-name progress, and should be scoped to a small candidate set (one pack/file).
 - **`ivar_hazard` flag for partial-accessor writer removal** (#137) — when a dead `attr_writer`
   half of an `attr_accessor` has a live reader sibling AND the backing `@ivar` is never assigned
   directly in source (`@foo = …`), removing the writer would leave the surviving reader reading an

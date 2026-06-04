@@ -17,6 +17,7 @@ module SorbetDeadcode
       :flags,                 # Array<Symbol> risk markers
       :suggested_action,      # :safe_delete / :delete_with_spec / :review / :keep
       :added,                 # String|nil — introducing commit (with --history), else nil
+      :dead_since,            # String|nil — when it became dead (with --dead-since), else nil
       keyword_init: true,
     )
 
@@ -30,7 +31,7 @@ module SorbetDeadcode
     DEFAULT_PUBLIC_PATHS = ["/app/public/"].freeze
 
     def initialize(project_root:, exclude_paths: [], recent_within: nil, public_paths: DEFAULT_PUBLIC_PATHS,
-                   history: false)
+                   history: false, dead_since: false)
       @project_root = File.expand_path(project_root)
       @exclude_paths = exclude_paths
       # When set (seconds), candidates whose definition line was introduced within the
@@ -39,8 +40,9 @@ module SorbetDeadcode
       # Path fragments marking a public API surface (issue #138). Definitions there are
       # downgraded from safe_delete to review since external/runtime consumers are invisible.
       @public_paths = Array(public_paths)
-      # When enabled, annotate each result with the commit that introduced it (issue #135).
-      @history = Git::History.new(@project_root) if history
+      # When enabled, annotate each result with the commit that introduced it (`added:`) and, when
+      # --dead-since is also on, when it became dead (`dead_since:`, repo-wide pickaxe) — issue #135.
+      @history = Git::History.new(@project_root, dead_since: dead_since) if history || dead_since
     end
 
     # @param candidates [Array<Definition>]
@@ -116,6 +118,7 @@ module SorbetDeadcode
         flags: flags,
         suggested_action: action,
         added: @history&.added(definition),
+        dead_since: @history&.dead_since(definition),
       )
     end
 

@@ -89,6 +89,80 @@ module SorbetDeadcode
           assert_nil History.new(@dir).prepare([d]).added(d)
         end
       end
+
+      # #135: dead_since is off unless explicitly enabled (it runs an expensive repo-wide pickaxe).
+      def test_dead_since_disabled_by_default
+        path = commit("app/foo.rb", "class Foo\n  def lonely_method; end\nend\n", "Add lonely_method")
+        d = defn("lonely_method", path)
+
+        history = nil
+        capture_io { history = History.new(@dir).prepare([d]) }
+
+        assert_nil history.dead_since(d)
+      end
+
+      # A name whose reference count never changed after introduction is dead-on-arrival.
+      def test_dead_since_reports_dead_on_arrival
+        path = commit("app/foo.rb", "class Foo\n  def lonely_method; end\nend\n", "Add lonely_method")
+        d = defn("lonely_method", path)
+
+        history = nil
+        capture_io { history = History.new(@dir, dead_since: true).prepare([d]) }
+
+        assert_includes history.dead_since(d), "dead-on-arrival"
+        assert_includes history.dead_since(d), "Add lonely_method"
+      end
+
+      # A name that gained a caller and then lost it is "dead since" the caller-removing commit.
+      def test_dead_since_reports_orphaning_commit
+        path = commit("app/foo.rb", "class Foo\n  def orphaned_method; end\nend\n", "Add orphaned_method")
+        commit("app/caller.rb", "Foo.new.orphaned_method\n", "Call orphaned_method")
+        File.write(File.join(@dir, "app/caller.rb"), "# no more call\n")
+        git("add", "app/caller.rb")
+        git("commit", "-q", "-m", "Remove orphaned_method caller")
+        d = defn("orphaned_method", path)
+
+        history = nil
+        capture_io { history = History.new(@dir, dead_since: true).prepare([d]) }
+
+        assert_includes history.dead_since(d), "dead since"
+        assert_includes history.dead_since(d), "Remove orphaned_method caller"
+      end
+
+      def test_dead_since_nil_when_name_never_appears
+        path = commit("app/foo.rb", "class Foo\n  def bar; end\nend\n", "Add bar")
+        d = defn("name_that_never_appears", path)
+
+        history = nil
+        capture_io { history = History.new(@dir, dead_since: true).prepare([d]) }
+
+        assert_nil history.dead_since(d)
+      end
+
+      def test_dead_since_nil_on_git_error
+        path = commit("app/foo.rb", "class Foo\n  def bar; end\nend\n", "Add bar")
+        d = defn("bar", path)
+
+        history = nil
+        capture_io do
+          IO.stub(:popen, ->(*) { raise "boom" }) do
+            history = History.new(@dir, dead_since: true).prepare([d])
+          end
+        end
+
+        assert_nil history.dead_since(d)
+      end
+
+      # The expensive path warns loudly up front and prints live per-name progress.
+      def test_dead_since_emits_cost_warning_and_progress
+        path = commit("app/foo.rb", "class Foo\n  def lonely_method; end\nend\n", "Add lonely_method")
+        d = defn("lonely_method", path)
+
+        _out, err = capture_io { History.new(@dir, dead_since: true).prepare([d]) }
+
+        assert_includes err, "REPO-WIDE git pickaxe"
+        assert_includes err, "dead-since pickaxe 1/1: lonely_method"
+      end
     end
   end
 end

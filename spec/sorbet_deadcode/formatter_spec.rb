@@ -5,7 +5,8 @@ require "json"
 
 module SorbetDeadcode
   class FormatterSpec < Minitest::Test
-    def result(name:, action:, flags: [], kind: :method, owner: "Foo", refs: 0, confidence: :high, added: nil)
+    def result(name:, action:, flags: [], kind: :method, owner: "Foo", refs: 0, confidence: :high,
+               added: nil, dead_since: nil)
       definition = Definition.new(
         name: name, full_name: "#{owner}##{name}", kind: kind,
         location: "app/models/foo.rb:1", owner_name: owner,
@@ -18,6 +19,7 @@ module SorbetDeadcode
         flags: flags,
         suggested_action: action,
         added: added,
+        dead_since: dead_since,
       )
     end
 
@@ -50,6 +52,21 @@ module SorbetDeadcode
       refute_includes out, "added:"
     end
 
+    def test_text_format_includes_dead_since_when_present
+      out = Formatter.render(
+        [result(name: "bar", action: :safe_delete, dead_since: "dead since def5678 2024-03-04 Drop caller")],
+        format: :text,
+      )
+
+      assert_includes out, "    dead_since: dead since def5678 2024-03-04 Drop caller"
+    end
+
+    def test_text_format_omits_dead_since_line_when_absent
+      out = Formatter.render([result(name: "bar", action: :safe_delete)], format: :text)
+
+      refute_includes out, "dead_since:"
+    end
+
     def test_unknown_format_falls_back_to_text
       out = Formatter.render([result(name: "bar", action: :safe_delete)], format: :bogus)
 
@@ -67,8 +84,8 @@ module SorbetDeadcode
 
       assert_includes out, "### safe_delete (1)"
       assert_includes out, "### review (1)"
-      assert_includes out, "| kind | name | location | refs | flags | added |"
-      assert_includes out, "| method | `Foo#dead` | `app/models/foo.rb:1` | 0 |  |  |"
+      assert_includes out, "| kind | name | location | refs | flags | added | dead_since |"
+      assert_includes out, "| method | `Foo#dead` | `app/models/foo.rb:1` | 0 |  |  |  |"
       assert_includes out, "`public_api`"
     end
 
@@ -79,6 +96,15 @@ module SorbetDeadcode
       )
 
       assert_includes out, "`abc1234 2024-01-02 Add dead`"
+    end
+
+    def test_markdown_includes_dead_since_cell_when_present
+      out = Formatter.render(
+        [result(name: "dead", action: :safe_delete, dead_since: "dead-on-arrival (abc1234 2024-01-02 Add dead)")],
+        format: :markdown,
+      )
+
+      assert_includes out, "`dead-on-arrival (abc1234 2024-01-02 Add dead)`"
     end
 
     def test_json_format_is_parseable_and_complete
@@ -107,6 +133,21 @@ module SorbetDeadcode
       )
 
       assert_equal "abc1234 2024-01-02 Add bar", JSON.parse(out).first["added"]
+    end
+
+    def test_json_includes_dead_since_when_present
+      out = Formatter.render(
+        [result(name: "bar", action: :safe_delete, dead_since: "dead since def5678 2024-03-04 Drop caller")],
+        format: :json,
+      )
+
+      assert_equal "dead since def5678 2024-03-04 Drop caller", JSON.parse(out).first["dead_since"]
+    end
+
+    def test_json_dead_since_nil_when_absent
+      out = Formatter.render([result(name: "bar", action: :safe_delete)], format: :json)
+
+      assert_nil JSON.parse(out).first["dead_since"]
     end
   end
 end

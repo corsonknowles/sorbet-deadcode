@@ -46,6 +46,7 @@ options = {
   public_paths: nil,
   format: :text,
   history: false,
+  dead_since: false,
   plain: false,
   report_dynamic_dispatch: false,
   report_non_ruby: false,
@@ -218,8 +219,17 @@ OptionParser.new do |opts|
 
   opts.on("--history",
     "Annotate each candidate with the commit that introduced it (rename-aware,",
-    "file-scoped git pickaxe). Adds an `added:` line per candidate. Opt-in: runs a",
-    "git query per candidate.") do
+    "file-scoped git pickaxe). Adds an `added:` line per candidate. Opt-in: runs",
+    "one git query per FILE (fast, batched).") do
+    options[:history] = true
+  end
+
+  opts.on("--dead-since",
+    "Also annotate WHEN each candidate became dead (`dead_since:` =",
+    "dead-on-arrival vs. orphaned + the commit that removed its last reference).",
+    "⚠️  SLOW: a REPO-WIDE git pickaxe per unique name — scope to a small candidate",
+    "set (one pack/file). Implies --history.") do
+    options[:dead_since] = true
     options[:history] = true
   end
 
@@ -304,6 +314,13 @@ unless SorbetDeadcode::Formatter::FORMATS.include?(options[:format])
   $stderr.puts "Error: --format must be one of #{SorbetDeadcode::Formatter::FORMATS.join(', ')} " \
                "(got '#{options[:format]}')."
   exit 1
+end
+
+# Loud upfront heads-up the moment we know --dead-since is on, before the (also slow) analysis
+# even starts — the repo-wide per-name pickaxe is the most expensive thing the tool can do.
+if options[:dead_since]
+  $stderr.puts "[sorbet-deadcode] ⚠️  --dead-since is ON: expect a SLOW repo-wide git pickaxe per " \
+               "candidate name. Scope to a small set; see the Performance section of the README."
 end
 
 # Default the project root to the git toplevel so ripgrep verification and the non-Ruby
@@ -563,6 +580,7 @@ if do_classify
     recent_within: options[:recent_within],
     public_paths: options[:public_paths] || SorbetDeadcode::Classifier::DEFAULT_PUBLIC_PATHS,
     history: options[:history],
+    dead_since: options[:dead_since],
   )
   classified = classifier.classify(results)
 
