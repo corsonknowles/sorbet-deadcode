@@ -256,5 +256,60 @@ module SorbetDeadcode
       assert_equal 2, result.reference_count        # definition + 1 caller
       assert_equal 1, result.external_reference_count
     end
+
+    # #138: a zero-reference definition on a public API surface is a review prompt, not a
+    # safe delete (external/runtime consumers are invisible to in-repo analysis).
+    def test_public_api_definition_routed_to_review
+      path = write("packs/x/app/public/widget.rb", "class Widget\n  def export\n  end\nend\n")
+      result = classify_one(defn("export", location: "#{path}:2"))
+
+      assert_includes result.flags, :public_api
+      assert_equal :review, result.suggested_action
+      assert_equal Analyzer::Confidence::LOW, result.confidence
+    end
+
+    def test_non_public_definition_still_safe_delete
+      path = write("packs/x/app/services/widget.rb", "class Widget\n  def export\n  end\nend\n")
+      result = classify_one(defn("export", location: "#{path}:2"))
+
+      refute_includes result.flags, :public_api
+      assert_equal :safe_delete, result.suggested_action
+    end
+
+    def test_public_api_definition_with_production_reference_is_kept
+      path = write("packs/x/app/public/widget.rb", "class Widget\n  def export\n  end\nend\n")
+      write("packs/y/app/services/caller.rb", "Widget.new.export\n")
+      result = classify_one(defn("export", location: "#{path}:2"))
+
+      assert_equal :keep, result.suggested_action
+    end
+
+    def test_public_paths_can_be_disabled
+      path = write("packs/x/app/public/widget.rb", "class Widget\n  def export\n  end\nend\n")
+      result = Classifier.new(project_root: @dir, public_paths: [])
+                         .classify([defn("export", location: "#{path}:2")]).first
+
+      refute_includes result.flags, :public_api
+      assert_equal :safe_delete, result.suggested_action
+    end
+
+    # #135: with history enabled, each result is annotated with its introducing commit.
+    def test_history_annotates_added_commit_when_enabled
+      path = write("app/foo.rb", "class Foo\n  def fresh; end\nend\n")
+      git_commit_now("app/foo.rb")
+
+      result = Classifier.new(project_root: @dir, history: true)
+                         .classify([defn("fresh", location: "#{path}:2")]).first
+
+      assert result.added
+      assert_match(/\A\h+ \d{4}-\d\d-\d\d /, result.added)
+    end
+
+    def test_history_not_annotated_by_default
+      path = write("app/foo.rb", "class Foo\n  def fresh; end\nend\n")
+      git_commit_now("app/foo.rb")
+
+      assert_nil classify_one(defn("fresh", location: "#{path}:2")).added
+    end
   end
 end

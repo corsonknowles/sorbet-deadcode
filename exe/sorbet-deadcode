@@ -43,6 +43,8 @@ options = {
   classify: false,
   only_action: nil,
   recent_within: 30 * 86_400,
+  public_paths: nil,
+  format: :text,
   history: false,
   plain: false,
   report_dynamic_dispatch: false,
@@ -181,6 +183,21 @@ OptionParser.new do |opts|
     options[:recent_within] = parse_max_age(value)
   end
 
+  opts.on("--public-paths LIST",
+    "Comma-separated path fragments treated as a public API surface (default:",
+    "app/public/). Zero-reference definitions there are flagged public_api and routed to",
+    "review instead of safe_delete (external/runtime consumers are invisible to rg).",
+    "Pass 'none' to disable.") do |list|
+    options[:public_paths] = %w[none off].include?(list.strip.downcase) ? [] : list.split(",").map(&:strip).reject(&:empty?)
+  end
+
+  opts.on("--format FORMAT",
+    "Output format for the classified view: text (default), markdown (PR-ready,",
+    "grouped-by-action tables), or json (machine-readable, for piping). The summary",
+    "line is written to stderr so stdout stays clean for redirection.") do |fmt|
+    options[:format] = fmt.strip.downcase.to_sym
+  end
+
   opts.on("--history",
     "Annotate each candidate with the commit that introduced it (rename-aware,",
     "file-scoped git pickaxe). Adds an `added:` line per candidate. Opt-in: runs a",
@@ -262,6 +279,12 @@ options[:exclude_paths] = [] if options[:include_specs]
 
 if options[:sort] && !%i[name location].include?(options[:sort])
   $stderr.puts "Error: --sort must be 'name' or 'location' (got '#{options[:sort]}')."
+  exit 1
+end
+
+unless SorbetDeadcode::Formatter::FORMATS.include?(options[:format])
+  $stderr.puts "Error: --format must be one of #{SorbetDeadcode::Formatter::FORMATS.join(', ')} " \
+               "(got '#{options[:format]}')."
   exit 1
 end
 
@@ -489,6 +512,7 @@ if do_classify
     project_root: options[:project_root],
     exclude_paths: options[:exclude_paths],
     recent_within: options[:recent_within],
+    public_paths: options[:public_paths] || SorbetDeadcode::Classifier::DEFAULT_PUBLIC_PATHS,
     history: options[:history],
   )
   classified = classifier.classify(results)
@@ -556,14 +580,9 @@ if do_classify
   when :name then classified.sort_by { |c| c.definition.full_name }
   else classified.sort_by { |c| [c.suggested_action.to_s, c.definition.full_name] }
   end
-  sorted_classified.each do |c|
-    flags = c.flags.empty? ? "" : " flags=#{c.flags.join(',')}"
-    puts "  [#{c.suggested_action}] [#{c.confidence}] #{c.definition.kind} #{c.definition.full_name} " \
-         "(refs=#{c.external_reference_count}#{flags})"
-    puts "    #{c.definition.location}"
-    puts "    added: #{c.added}" if c.added
-  end
-  puts "\n#{classified.size} candidates classified."
+  puts SorbetDeadcode::Formatter.render(sorted_classified, format: options[:format])
+  # Summary to stderr so stdout stays clean for `--format json`/`markdown` redirection.
+  $stderr.puts "\n#{classified.size} candidates classified."
   exit 1
 end
 

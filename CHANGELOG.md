@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Added
+- **`--history` annotation** (#135) — annotates each candidate with the commit that introduced its
+  definition (`added: <sha> <date> <subject>`), surfaced in all `--format` outputs. Uses a
+  rename-aware, file-scoped `git log --follow -S` (`SorbetDeadcode::Git::History`); opt-in since it
+  runs a git query per candidate. The complementary "dead-since / last-caller-removed" archaeology
+  (a whole-repo pickaxe per name) is intentionally deferred — it's the same per-candidate cost that
+  led `Recency` to batch.
+- **Public-API caution flag** (#138) — definitions on a public API surface (default: Packwerk's
+  `app/public/`) are flagged `public_api` and routed to `review` instead of `safe_delete` when they
+  have no in-repo references, since external packs/services or runtime consumers (federation,
+  `constantize`) are invisible to static analysis. Configure or disable with `--public-paths`
+  (`--public-paths none` to turn off; comma-separated fragments otherwise).
+- **`--format` output formats** (#139) — the classified view can render as `text` (default),
+  `markdown` (PR-ready tables grouped by suggested action), or `json` (machine-readable, for
+  piping). The summary line is written to stderr so stdout stays clean for redirection. Rendering
+  lives in a unit-tested `SorbetDeadcode::Formatter`.
+
 ### Changed
 - **Branch coverage is now held at 100%** (floor raised from 96%). Audited the previously
   "uncoverable defensive guard" branches: most were ordinary negative-case arms now covered by
