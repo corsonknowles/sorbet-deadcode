@@ -14,6 +14,8 @@ Existing tools like [Spoom](https://github.com/Shopify/spoom) use **name-based**
 
 ## Installation
 
+Requires Ruby >= 3.4.
+
 ```bash
 gem install sorbet-deadcode
 ```
@@ -24,11 +26,32 @@ Or add to your Gemfile:
 gem "sorbet-deadcode", group: :development
 ```
 
+The `spoom` gem is an **optional** dependency, required only for `--spoom`, `--verify-with-sorbet`,
+and `--remove` (syntax-aware removal). Install it when you reach for those flags.
+
+## Quick start
+
+```bash
+# Scan a directory. The project root is auto-detected from the git toplevel, so ripgrep
+# verification and the non-Ruby refiners run repo-wide even from inside a subdirectory.
+sorbet-deadcode packs/my_pack/
+
+# Show only the candidates that are safe to delete automatically
+sorbet-deadcode packs/my_pack/ --only safe_delete
+
+# Detect → remove loop: preview a diff, then write it
+sorbet-deadcode packs/my_pack/ --remove safe_delete          # dry-run diff
+sorbet-deadcode packs/my_pack/ --remove safe_delete --apply  # write edits
+```
+
+The default run is fast (seconds to about a minute) and biased conservative — the `safe_delete`
+tier is meant to be acted on directly. Reach for the heavier flags (below) when you want maximum
+confidence or richer annotations; see [Performance](#performance) for the cost of each.
+
 ## Usage
 
 ```bash
-# Scan a pack. The project root is auto-detected from the git toplevel, so ripgrep
-# verification and the non-Ruby refiners run repo-wide even from inside a subdirectory.
+# Scan a pack
 sorbet-deadcode packs/my_pack/
 
 # Add type-aware cross-reference context for extra precision in a monorepo
@@ -73,7 +96,7 @@ sorbet-deadcode packs/my_pack/ --reference-root .
 Adds **type-aware** cross-reference resolution: it parses the *entire* reference root so a
 method called on a known receiver type in another pack (or reached only from a `.descendants`
 call site elsewhere) is matched precisely, not just by name. This is the most accurate mode
-but parses the whole tree, so it takes **minutes** on a large monorepo.
+but parses the whole tree, so it takes **minutes** on a large monorepo (see [Performance](#performance)).
 
 `--reference-root` is **opt-in by design** — auto-enabling it would make the default slow,
 and the name-based verification pass already covers the common cross-pack case. Reach for it
@@ -97,8 +120,23 @@ route the rest to review). Live candidates (action `keep`) are hidden.
 |--------|---------|
 | `safe_delete` | No references outside the definition — safe to remove |
 | `delete_with_spec` | Referenced only from specs/tests — remove along with its spec |
-| `review` | Referenced from non-Ruby files or an inline-constant side effect — needs a human |
+| `review` | Referenced from non-Ruby files, an inline-constant side effect, a public-API surface, or an ivar hazard — needs a human |
 | `keep` | Real production references exist — not dead (hidden unless `--only keep`) |
+
+Each candidate may also carry **risk flags** that explain the action:
+
+| Flag | Meaning |
+|------|---------|
+| `spec_only` | Referenced only from spec/test files |
+| `non_ruby_reference` | Referenced from a non-Ruby file (route/YAML/ERB/RABL/GraphQL) |
+| `live_reference` | Has production references (paired with `keep`) |
+| `inline_constant` | A `PARENT = [CHILD = …]` member — can only be removed by editing the literal |
+| `public_api` | Lives on a public-API surface (see [`--public-paths`](#public-api-surface---public-paths)) |
+| `partial_accessor` | One dead half of an `attr_accessor` whose other half is live — narrow, don't delete the line |
+| `ivar_hazard` | Removing this writer would orphan the backing `@ivar` (a Sorbet error) — keep a typed declaration |
+| `cascaded` | Became dead only after other dead code was (transitively) removed (`--cascade`) |
+| `recently_added` | Introduced recently (see `--max-age`) — likely in-flight work |
+| `kept_by:<source>` | Kept alive only by a non-Ruby source (with `--report-non-ruby`) |
 
 Definitions introduced within the last **30 days** (per git line history) are flagged
 `recently_added`, downgraded to low confidence, and routed to `review` — they're likely
@@ -106,7 +144,22 @@ in-flight work, not dead. Tune with `--max-age 2w` / `1m`, or `--max-age 0` to d
 
 Use `--only ACTION` to filter (e.g. `--only safe_delete`), or `--plain` for a flat list.
 
-### Ripgrep Verification (Default)
+### Output formats (`--format`)
+
+The classified view renders as human-readable text (default), a PR-ready markdown table, or
+machine-readable JSON. The summary line goes to **stderr**, so stdout stays clean for piping.
+
+```bash
+sorbet-deadcode packs/my_pack/ --format text       # default tiered list
+sorbet-deadcode packs/my_pack/ --format markdown    # grouped-by-action tables for a PR body
+sorbet-deadcode packs/my_pack/ --format json | jq   # machine-readable
+```
+
+Markdown groups candidates under `### <action> (n)` headings with `kind | name | location | refs |
+flags | added | dead_since` columns (the `added`/`dead_since` columns populate with `--history` /
+`--dead-since`).
+
+### Ripgrep verification (default)
 
 `sorbet-deadcode` runs a ripgrep second pass by default to confirm each candidate
 appears ≤1 time in the codebase (i.e. only at its definition). This eliminates the
@@ -122,41 +175,99 @@ sorbet-deadcode packs/my_pack/
 sorbet-deadcode --no-verify packs/my_pack/
 ```
 
-### Cross-Reference Context (`--reference-root`)
+### Cross-reference context (`--reference-root`)
 
 The most impactful flag for accuracy in a monorepo. Tells the tool to scan a broader
-directory for *references only* so that methods called from outside the analyzed pack
-are not falsely reported as dead.
+directory for *references only* (no definitions are collected from those files) so that
+methods called from outside the analyzed path are not falsely reported as dead. This adds
+**type-aware** cross-references (precise receiver matching) on top of the name-based
+verification pass.
 
 ```bash
 # Without: only references from within packs/my_pack/ are considered
 sorbet-deadcode packs/my_pack/
 
-# With: references from all pack files are considered
+# Definitions from one pack, references from all packs
 sorbet-deadcode packs/my_pack/ --reference-root packs/
-```
 
-`--reference-root` adds *type-aware* cross-references (precise receiver matching). The
-repo-wide ripgrep verification pass (on by default, scoped to the auto-detected git root)
-already catches the *name-based* case, so `--reference-root` is a precision add-on rather
-than a correctness requirement.
-
-### Reference Root (scanning callers outside your definition path)
-
-When analyzing a subdirectory (e.g. `lib/`), callers in other directories (e.g. `exe/`,
-`spec/`, or other packs) are invisible to the analyzer, causing public API methods to
-appear dead. Use `--reference-root` to scan a broader tree for *references only* — no
-definitions are collected from those files.
-
-```bash
 # Definitions from lib/, references from the whole project
 sorbet-deadcode lib/ --reference-root .
-
-# In a monorepo: definitions from one pack, references from all packs
-sorbet-deadcode packs/my_pack/ --reference-root packs/
 ```
 
-### Index & Report (analyze once, slice many times)
+The repo-wide ripgrep verification pass (on by default, scoped to the auto-detected git root)
+already catches the *name-based* cross-pack case, so `--reference-root` is a precision add-on
+rather than a correctness requirement. It parses the whole reference tree, so it's slow on a
+large monorepo — see [Performance](#performance).
+
+### Sorbet verification (`--verify-with-sorbet`)
+
+The strongest precision guarantee: trial-remove the candidates, run `srb tc`, and drop any whose
+removal **breaks the typecheck** (i.e. it was still referenced somewhere static analysis couldn't
+see). It snapshots and restores the edited files, so your tree is left untouched.
+
+```bash
+sorbet-deadcode packs/my_pack/ --verify-with-sorbet
+```
+
+Requires a **clean** baseline `srb tc` (otherwise pre-existing errors can't be attributed, and the
+flag is skipped with a warning) and the optional `spoom` gem (for syntax-aware removal). It runs a
+full typecheck, so it costs whatever `srb tc` costs on your project — see [Performance](#performance).
+
+### Transitive dead code (`--cascade`)
+
+After finding the first round of dead code, `--cascade` drops references that originate *inside*
+those dead methods and recomputes — to a fixpoint. This surfaces transitively-dead code: e.g. a
+private helper that was only ever called by a method that just turned out to be dead. Newly-dead
+definitions are flagged `cascaded`.
+
+```bash
+sorbet-deadcode packs/my_pack/ --cascade --verify-with-sorbet
+```
+
+Best paired with `--verify-with-sorbet`, since cascaded removals are larger and worth confirming.
+
+### Git history annotations (`--history`, `--dead-since`)
+
+Automates the per-method "why is this dead?" archaeology you'd otherwise do by hand for a removal PR.
+
+```bash
+# Annotate each candidate with the commit that introduced it
+sorbet-deadcode packs/my_pack/ --history
+#   [safe_delete] [high] method Widget#unused_helper (refs=0)
+#     app/models/widget.rb:42
+#     added: a1b2c3d 2023-04-01 Add unused_helper
+
+# Also annotate WHEN it became dead (implies --history)
+sorbet-deadcode packs/my_pack/ --dead-since
+#     added: a1b2c3d 2023-04-01 Add unused_helper
+#     dead_since: dead since e4f5g6h 2024-08-09 Remove last caller
+```
+
+`--history` is **cheap**: one rename-aware `git log` pass per *file*, batched. `dead_since`
+distinguishes **dead-on-arrival** (the name's repo-wide reference count never changed after it was
+introduced) from **orphaned** (it names the most recent commit that changed the count ≈ when the
+last caller was removed).
+
+> ⚠️ `--dead-since` is **expensive**: it runs a **repo-wide** `git log -S` pickaxe once per unique
+> candidate name. On a large/deep-history monorepo each pickaxe can take seconds-to-minutes, so it
+> prints a loud upfront warning and live per-name progress. Scope it to a small candidate set (one
+> pack/file). See [Performance](#performance).
+
+### Public API surface (`--public-paths`)
+
+Zero-reference definitions on a public-API surface (default: paths containing `app/public/`) are
+flagged `public_api` and routed to `review` instead of `safe_delete` — external packs or runtime
+consumers can call them where ripgrep can't see.
+
+```bash
+# Treat additional path fragments as public API
+sorbet-deadcode packs/my_pack/ --public-paths app/public/,lib/api/
+
+# Disable the public-API caution entirely
+sorbet-deadcode packs/my_pack/ --public-paths none
+```
+
+### Index & report (analyze once, slice many times)
 
 A full-repo analysis can take minutes. Run it **once**, save the result to a JSON
 index, then `--report` against that index instantly — optionally filtering to specific
@@ -177,10 +288,11 @@ sorbet-deadcode --report tmp/deadcode.json --classify
 
 # Cross-compare the cached index against another tool's index (e.g. Spoom)
 sorbet-deadcode --report tmp/deadcode.json --intersect tmp/spoom.json
-
-# Or intersect with Spoom directly, in one pass — no intermediate file
-sorbet-deadcode app/ --spoom
 ```
+
+`--report` skips analysis and verification (the index is already verified) but still
+flows through classification and confidence scoring, so the index → classify workflow
+works end to end.
 
 ### Intersecting with Spoom (`--spoom`)
 
@@ -189,14 +301,15 @@ name-based and broad (it blanket-keeps whole framework categories alive — fewe
 more false *negatives*), while `sorbet-deadcode` is type-aware and precise. Their **intersection**
 — definitions both tools call dead — is the highest-confidence set.
 
+```bash
+# Intersect with Spoom directly, in one pass — no intermediate file
+sorbet-deadcode app/ --spoom
+```
+
 `--spoom` runs Spoom's dead-code engine (via its Ruby API) on the same paths and keeps only the
 candidates that appear in both, keyed on `[full_name, kind]` (Spoom reports the same `kind`
 vocabulary). Spoom is an **optional dependency** — only required when you pass `--spoom`
 (`gem install spoom` or add it to your Gemfile).
-
-`--report` skips analysis and verification (the index is already verified) but still
-flows through classification and confidence scoring, so the index → classify workflow
-works end to end.
 
 ### Removing dead code (`--remove`)
 
@@ -228,7 +341,7 @@ in a RuboCop cop, `resolve` on a GraphQL type). `sorbet-deadcode` keeps these al
 **base-class-scoped conventions** — scoped to the framework classes that use them, so a same-named
 method on an unrelated class is still analyzed (unlike a global name allow-list). Built-ins cover
 Prism visitors, graphql-ruby types, ActiveJob/Sidekiq jobs, RuboCop cops (`on_*`), Minitest,
-`EachValidator`, migrations, and Rails/Thor generators.
+`EachValidator`, migrations, Rails/Thor generators, and ActiveAdmin registrations.
 
 To cover in-house base classes, register your own conventions in a `.sorbet-deadcode.yml` at the
 project root (auto-loaded), or point at one with `--config FILE`:
@@ -307,10 +420,10 @@ sorbet-deadcode packs/my_pack/ --report-non-ruby --only review
 #   [review] [low] method Widget#display_name (refs=0 flags=kept_by:graphql_sdl)
 ```
 
-### False-Positive Handling
+### False-positive handling
 
-`sorbet-deadcode` detects and suppresses several classes of dynamic dispatch that
-would otherwise produce false positives:
+`sorbet-deadcode` detects and suppresses several classes of dynamic dispatch and framework
+convention that would otherwise produce false positives:
 
 | Pattern | Example | Handling |
 |---------|---------|----------|
@@ -319,15 +432,123 @@ would otherwise produce false positives:
 | Subclass discovery | `Base.descendants` / `T.unsafe(Base).subclasses` | Keeps every (transitive) subclass of `Base` alive |
 | Inline constant nesting | `PARENT = [CHILD = 1]` | Never reports `PARENT` dead while `CHILD` is alive |
 | Rails callbacks | `validate :check_name`, `before_save :normalize` | Keeps callback targets alive |
+| Validation conditionals | `validates :x, exclusion: { in: [...], unless: :skip? }` | Keeps `if:`/`unless:` guards alive, including nested hash options |
+| AASM transitions | `transitions from: :a, to: :b, after: :cb, guard: :ok?` | Keeps callback/guard targets alive |
 | `accepts_nested_attributes_for` | `accepts_nested_attributes_for :items` | Keeps `items_attributes=` overrides alive |
+| `delegate ..., to:` | `delegate :to_s, to: :writer` | Keeps the delegation target (`writer`) alive |
 | `Prism::Visitor` subclasses | `class MyVisitor < Prism::Visitor` | Keeps all `visit_*` methods alive |
 | Mailer previews | `class FooMailerPreview` | Keeps the class and all preview actions alive |
+| ActiveAdmin registrations | `ActiveAdmin.register Widget do … end` | Keeps the page's DSL methods alive |
 | Routed controller actions | `get '/x', to: 'widgets#index'` | Keeps routed actions alive (`--no-routes` to disable) |
 | Framework YAML | `method: Foo::BarSanitizer.sanitize_x` | Keeps the YAML-referenced method + class alive (`--no-yaml` to disable) |
 | ERB templates | `<%= widget.display_name %>` | Keeps template-referenced methods/constants alive (`--no-erb` to disable) |
 | RABL templates | `attributes :display_name` / `node(:s) { \|w\| w.status }` | Keeps template-referenced methods/constants alive (`--no-rabl` to disable) |
 | GraphQL SDL (`.graphql`) | `type User { fullName: String }` | Keeps the resolver method (`full_name`) alive (`--no-graphql` to disable) |
 | Always-alive methods | `initialize`, `respond_to_missing?`, etc. | Never reported dead |
+
+## Workflow patterns
+
+Recommended recipes, from cheapest/most-routine to most-thorough:
+
+**1. Routine sweep (CI, agents, a quick pack audit).** The fast default; act on `safe_delete`.
+
+```bash
+sorbet-deadcode packs/my_pack/ --only safe_delete
+```
+
+**2. Detect → remove loop.** Preview, then write.
+
+```bash
+sorbet-deadcode packs/my_pack/ --remove safe_delete           # dry-run diff
+sorbet-deadcode packs/my_pack/ --remove safe_delete --apply   # write it
+```
+
+**3. Confident bulk audit before deleting a lot.** Add type-aware cross-refs and a Sorbet oracle.
+
+```bash
+sorbet-deadcode packs/my_pack/ --reference-root . --verify-with-sorbet
+```
+
+**4. Highest-confidence set.** Keep only what both tools agree is dead.
+
+```bash
+sorbet-deadcode packs/my_pack/ --spoom --only safe_delete
+```
+
+**5. Transitive cleanup.** Remove a dead method *and* the helpers only it called.
+
+```bash
+sorbet-deadcode packs/my_pack/ --cascade --verify-with-sorbet
+```
+
+**6. Writing the removal PR.** A paste-ready table plus git archaeology. Run `--dead-since` only on
+the final, small candidate set (it's the expensive flag):
+
+```bash
+sorbet-deadcode packs/my_pack/ --only safe_delete --history --format markdown
+sorbet-deadcode packs/my_pack/ --only safe_delete --dead-since --format markdown
+```
+
+**7. Big repo, repeated slicing.** Analyze once, report instantly many times.
+
+```bash
+sorbet-deadcode . --reference-root . --index tmp/deadcode.json   # minutes, once
+sorbet-deadcode --report tmp/deadcode.json packs/my_pack/ --classify   # instant
+```
+
+### Tips
+
+- **Start narrow, then verify.** Get a small candidate list with the fast default, *then* apply
+  expensive confirmation (`--verify-with-sorbet`, `--dead-since`) to just those survivors.
+- **Run from anywhere.** The project root auto-detects from the git toplevel, so verification is
+  repo-wide even when you scan a subdirectory. Use `--isolated` to deliberately limit scope.
+- **Register in-house DSLs once.** A `.sorbet-deadcode.yml` at the repo root is auto-loaded; use it
+  to teach the tool your base classes and DSLs instead of re-triaging the same false positives.
+- **Pipe JSON for tooling.** `--format json` keeps stdout clean (the summary goes to stderr).
+
+## Performance
+
+The default run is fast — Prism analysis + repo-wide ripgrep + the non-Ruby refiners return in
+**seconds to about a minute**. The optional flags trade time for precision or annotation. Rough
+cost ladder, cheapest to most expensive:
+
+| Flag | Extra cost | When to use |
+|------|-----------|-------------|
+| `--no-verify` | **Negative** (skips ripgrep) | Quick exploratory scan; `rg` not installed |
+| *(default)* | Seconds–~1 min | Routine sweeps, CI, agents |
+| `--history` | One `git log` pass per **file** (batched, cheap) | Annotating a removal PR |
+| `--reference-root .` | Parses the **whole tree** for refs — **minutes** on a monorepo | Bulk-delete audits needing type-aware cross-refs |
+| `--spoom` | Runs Spoom's full engine on the same paths | Highest-confidence intersection |
+| `--verify-with-sorbet` | One full `srb tc` (+ trial edits) | Final confirmation before deleting |
+| `--cascade` | A few extra analysis passes (to a fixpoint) | Transitive dead-code cleanup |
+| `--dead-since` | ⚠️ A **repo-wide** `git log -S` pickaxe **per unique candidate name** | Last — only on a small, final candidate set |
+
+### The expensive one: `--dead-since`
+
+`--dead-since` is in a class of its own. Unlike `--history` (file-scoped, batched per file), it runs
+a **repo-wide** `git log -S <name>` pickaxe **once per unique candidate name**. On a large,
+deep-history monorepo a single pickaxe can take **minutes**, so the total scales with the number of
+candidates. The tool therefore:
+
+- makes it **strictly opt-in**,
+- prints a **loud warning the moment the flag is seen** (before analysis) and again before the
+  pickaxe loop, and
+- prints **live per-name progress** (`dead-since pickaxe 3/40: foo`) so a long run is visibly
+  progressing rather than appearing hung.
+
+**Always scope `--dead-since` to a small candidate set** — e.g. filter to `--only safe_delete` for a
+single pack first, then re-run with `--dead-since` on just those.
+
+### Other heavy flags
+
+- **`--reference-root .`** parses the entire reference tree (not just your `--paths`), so it's the
+  main source of slowness for accuracy work. For repeated runs, build an `--index` once and
+  `--report` against it — reporting skips analysis/verification entirely.
+- **`--verify-with-sorbet`** costs one full `srb tc`. It needs a clean baseline; if `srb tc` is slow
+  on your project, so is this flag. It snapshots/restores files, so it's safe to interrupt.
+- **`--spoom`** runs Spoom's own analysis on the same paths in addition to ours.
+- **`--cascade`** recomputes the dead set to a fixpoint — a handful of extra analysis passes over
+  the already-collected definitions, not a re-parse.
 
 ## How It Works
 
@@ -374,6 +595,8 @@ When type information is unavailable (no `sig`, untyped code), `sorbet-deadcode`
 bundle install
 bundle exec rake test
 ```
+
+The suite enforces **100% line and branch coverage** (SimpleCov) and RuboCop cleanliness.
 
 ## License
 
