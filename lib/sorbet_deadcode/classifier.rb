@@ -16,6 +16,7 @@ module SorbetDeadcode
       :external_reference_count, # occurrences outside the definition file
       :flags,                 # Array<Symbol> risk markers
       :suggested_action,      # :safe_delete / :delete_with_spec / :review / :keep
+      :added,                 # String|nil — introducing commit (with --history), else nil
       keyword_init: true,
     )
 
@@ -28,7 +29,8 @@ module SorbetDeadcode
     # for review — never a safe delete.
     DEFAULT_PUBLIC_PATHS = ["/app/public/"].freeze
 
-    def initialize(project_root:, exclude_paths: [], recent_within: nil, public_paths: DEFAULT_PUBLIC_PATHS)
+    def initialize(project_root:, exclude_paths: [], recent_within: nil, public_paths: DEFAULT_PUBLIC_PATHS,
+                   history: false)
       @project_root = File.expand_path(project_root)
       @exclude_paths = exclude_paths
       # When set (seconds), candidates whose definition line was introduced within the
@@ -37,6 +39,8 @@ module SorbetDeadcode
       # Path fragments marking a public API surface (issue #138). Definitions there are
       # downgraded from safe_delete to review since external/runtime consumers are invisible.
       @public_paths = Array(public_paths)
+      # When enabled, annotate each result with the commit that introduced it (issue #135).
+      @history = Git::History.new(@project_root) if history
     end
 
     # @param candidates [Array<Definition>]
@@ -107,6 +111,7 @@ module SorbetDeadcode
         external_reference_count: external_count,
         flags: flags,
         suggested_action: action,
+        added: @history&.added(definition),
       )
     end
 

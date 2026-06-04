@@ -33,8 +33,10 @@ module SorbetDeadcode
 
     def text_entry(result)
       defn = result.definition
-      "  [#{result.suggested_action}] [#{result.confidence}] #{defn.kind} #{defn.full_name} " \
+      entry = "  [#{result.suggested_action}] [#{result.confidence}] #{defn.kind} #{defn.full_name} " \
         "(refs=#{result.external_reference_count}#{flags_suffix(result)})\n    #{defn.location}"
+      entry += "\n    added: #{result.added}" if result.added
+      entry
     end
 
     def flags_suffix(result)
@@ -45,8 +47,8 @@ module SorbetDeadcode
       results.group_by(&:suggested_action).map do |action, group|
         rows = group.map { |result| markdown_row(result) }
         "### #{action} (#{group.size})\n\n" \
-          "| kind | name | location | refs | flags |\n" \
-          "| --- | --- | --- | --- | --- |\n" +
+          "| kind | name | location | refs | flags | added |\n" \
+          "| --- | --- | --- | --- | --- | --- |\n" +
           rows.join("\n")
       end.join("\n\n")
     end
@@ -54,7 +56,9 @@ module SorbetDeadcode
     def markdown_row(result)
       defn = result.definition
       flags = result.flags.empty? ? "" : "`#{result.flags.join(', ')}`"
-      "| #{defn.kind} | `#{defn.full_name}` | `#{defn.location}` | #{result.external_reference_count} | #{flags} |"
+      added = result.added ? "`#{result.added}`" : ""
+      "| #{defn.kind} | `#{defn.full_name}` | `#{defn.location}` | #{result.external_reference_count} | " \
+        "#{flags} | #{added} |"
     end
 
     def json(results)
@@ -68,6 +72,7 @@ module SorbetDeadcode
           location: defn.location,
           external_reference_count: result.external_reference_count,
           flags: result.flags,
+          added: result.added,
         }
       end)
     end

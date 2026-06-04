@@ -45,6 +45,7 @@ options = {
   recent_within: 30 * 86_400,
   public_paths: nil,
   format: :text,
+  history: false,
   plain: false,
   report_dynamic_dispatch: false,
   report_non_ruby: false,
@@ -195,6 +196,13 @@ OptionParser.new do |opts|
     "grouped-by-action tables), or json (machine-readable, for piping). The summary",
     "line is written to stderr so stdout stays clean for redirection.") do |fmt|
     options[:format] = fmt.strip.downcase.to_sym
+  end
+
+  opts.on("--history",
+    "Annotate each candidate with the commit that introduced it (rename-aware,",
+    "file-scoped git pickaxe). Adds an `added:` line per candidate. Opt-in: runs a",
+    "git query per candidate.") do
+    options[:history] = true
   end
 
   opts.on("--plain",
@@ -505,6 +513,7 @@ if do_classify
     exclude_paths: options[:exclude_paths],
     recent_within: options[:recent_within],
     public_paths: options[:public_paths] || SorbetDeadcode::Classifier::DEFAULT_PUBLIC_PATHS,
+    history: options[:history],
   )
   classified = classifier.classify(results)
 

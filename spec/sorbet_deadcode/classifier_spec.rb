@@ -292,5 +292,24 @@ module SorbetDeadcode
       refute_includes result.flags, :public_api
       assert_equal :safe_delete, result.suggested_action
     end
+
+    # #135: with history enabled, each result is annotated with its introducing commit.
+    def test_history_annotates_added_commit_when_enabled
+      path = write("app/foo.rb", "class Foo\n  def fresh; end\nend\n")
+      git_commit_now("app/foo.rb")
+
+      result = Classifier.new(project_root: @dir, history: true)
+                         .classify([defn("fresh", location: "#{path}:2")]).first
+
+      assert result.added
+      assert_match(/\A\h+ \d{4}-\d\d-\d\d /, result.added)
+    end
+
+    def test_history_not_annotated_by_default
+      path = write("app/foo.rb", "class Foo\n  def fresh; end\nend\n")
+      git_commit_now("app/foo.rb")
+
+      assert_nil classify_one(defn("fresh", location: "#{path}:2")).added
+    end
   end
 end
