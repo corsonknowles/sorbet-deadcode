@@ -3,6 +3,16 @@
 ## Unreleased
 
 ### Fixed
+- **AASM `state` lifecycle callbacks no longer report their targets dead** (#168) — `state :verified,
+  before_enter: :set_verified_at, after_exit: :teardown` dispatches those symbols as callbacks, but
+  only `event`/`transitions` callbacks were recognized. `state`/`aasm_state` are now AASM DSL methods
+  and `before_enter`/`after_enter`/`before_exit`/`after_exit`/`enter`/`exit` are callback keys, so
+  their method targets stay alive.
+- **`validates` collection/bound options resolved by method no longer report it dead** (#168) —
+  `validates :x, inclusion: { in: :allowed_kinds }` (also `exclusion`, and `length`/`numericality`
+  bounds like `minimum:`/`greater_than:`) names a method on the record that supplies the allowed
+  set/bound at validation time. Symbol values of these option keys are now kept alive; constant or
+  literal values are unaffected.
 - **Devise routing helpers on `ActionDispatch::Routing::Mapper` are no longer false positives** (#167)
   — `devise_for` dispatches per-module routing helpers named `devise_<module>` (e.g.
   `devise_two_factor_authentication`), reopened as `protected` methods on
