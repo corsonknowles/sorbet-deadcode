@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Fixed
+- **Devise routing helpers on `ActionDispatch::Routing::Mapper` are no longer false positives** (#167)
+  — `devise_for` dispatches per-module routing helpers named `devise_<module>` (e.g.
+  `devise_two_factor_authentication`), reopened as `protected` methods on
+  `ActionDispatch::Routing::Mapper`. Devise calls them dynamically (`send("devise_#{module}")`) while
+  drawing routes, so they have no literal call site and were reported `safe_delete`; removing one
+  breaks `config/routes.rb`. A new `devise_routing` convention keeps the `devise_*` family alive on
+  the `Mapper` reopen.
+
 ### Changed
 - **`--kind` filter; default is now dead methods only** (#163) — a new `--kind KINDS` flag restricts
   the report to the given definition kinds (`method`, `constant`, `class`, `module`, `attr_reader`,

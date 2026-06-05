@@ -590,6 +590,25 @@ module SorbetDeadcode
         refute_includes names, "frequency"            # validates positional arg is an attribute, not a method
       end
 
+      # #167: Devise reopens ActionDispatch::Routing::Mapper with `devise_<module>` helpers
+      # dispatched dynamically by `devise_for` — keep the devise_ family alive on the Mapper reopen.
+      def test_devise_routing_mapper_keeps_devise_prefix_alive
+        refs = collect(<<~RUBY)
+          module ActionDispatch::Routing
+            class Mapper
+              protected
+
+              def devise_two_factor_authentication(mapping, controllers)
+                resource :two_factor_authentication
+              end
+            end
+          end
+        RUBY
+
+        prefixes = refs.select { |r| r.kind == :method_prefix }.map(&:name)
+        assert_includes prefixes, "devise_"
+      end
+
       def test_callback_if_conditional_array_emits_method_references
         refs = collect(<<~RUBY)
           class Model
