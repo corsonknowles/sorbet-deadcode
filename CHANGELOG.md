@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.2.0] - 2026-06-04
+
 ### Fixed
 - **`--remove` no longer silently deletes live code adjacent to a dead candidate** — spoom's
   `Deadcode::Remover` over-deletes when the target sits in a contiguous run of trailing-comment
