@@ -122,6 +122,13 @@ module SorbetDeadcode
             path_includes: "active_admin",
             keep_namespace: true,
           ),
+
+          # Devise routing extensions: `devise_for` dispatches per-module routing helpers named
+          # `devise_<module>` (e.g. `devise_two_factor_authentication`) that are reopened as
+          # `protected` methods on `ActionDispatch::Routing::Mapper`. Devise calls them dynamically
+          # (`send("devise_#{module}")`) while drawing routes, so there is no literal call site and
+          # they look dead. Scope to the `Mapper` reopen and keep the `devise_*` family alive.
+          Convention.new(name: "devise_routing", name_suffix: "Mapper", keep_prefixes: ["devise_"]),
         ].freeze
       end
 
