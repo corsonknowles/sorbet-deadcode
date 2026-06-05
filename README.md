@@ -144,6 +144,23 @@ in-flight work, not dead. Tune with `--max-age 2w` / `1m`, or `--max-age 0` to d
 
 Use `--only ACTION` to filter (e.g. `--only safe_delete`), or `--plain` for a flat list.
 
+### Filtering by kind (`--kind`)
+
+By default the report shows **dead methods only** — the highest-value, lowest-risk target and the
+one the type-aware engine is built for (receiver resolution). Use `--kind` to widen or change that:
+
+```bash
+sorbet-deadcode packs/my_pack/                       # methods only (default)
+sorbet-deadcode packs/my_pack/ --kind all             # every kind
+sorbet-deadcode packs/my_pack/ --kind constant,class  # just constants and classes
+```
+
+`--kind` accepts a comma-separated list of `method`, `constant`, `class`, `module`, `attr_reader`,
+`attr_writer` (singular/plural both work), or `all`. Filtering happens before verification, so
+ripgrep only runs on the selected candidates. Constants and classes carry more review overhead
+(`inline_constant`, public-API surfaces, DB-serialized values) — reach for them deliberately with
+`--kind`.
+
 ### Output formats (`--format`)
 
 The classified view renders as human-readable text (default), a PR-ready markdown table, or

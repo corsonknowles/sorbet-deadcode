@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Changed
+- **`--kind` filter; default is now dead methods only** (#163) — a new `--kind KINDS` flag restricts
+  the report to the given definition kinds (`method`, `constant`, `class`, `module`, `attr_reader`,
+  `attr_writer`, or `all`; singular/plural accepted). **The default is `method`** — a bare run now
+  reports only dead methods, the highest-value/lowest-risk target the type-aware engine is built for.
+  Pass `--kind all` (or an explicit list) for the previous all-kinds behavior. Filtering happens
+  before verification, so ripgrep only runs on the selected candidates.
 - **`--cascade` now implies `--reference-root`** (#161) — the cascade drops references originating
   inside dead methods, which is only sound with a cross-pack reference graph. Without one, an entry
   point consumed from another pack looks unused and its whole helper tree cascades to a false

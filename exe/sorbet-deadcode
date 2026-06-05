@@ -42,6 +42,7 @@ options = {
   show_confidence: false,
   classify: false,
   only_action: nil,
+  kind: SorbetDeadcode::KindFilter::DEFAULT,
   recent_within: 30 * 86_400,
   public_paths: nil,
   format: :text,
@@ -185,6 +186,13 @@ OptionParser.new do |opts|
     options[:only_action] = action.to_sym
   end
 
+  opts.on("--kind KINDS",
+    "Comma-separated definition kinds to report: method (default), constant, class, module,",
+    "attr_reader, attr_writer, or 'all'. Methods are the default — the highest-value,",
+    "lowest-risk target the type-aware engine is built for; pass 'all' for every kind.") do |kinds|
+    options[:kind] = kinds
+  end
+
   opts.on("--remove TIER",
     "Remove dead code in the given action TIER (safe_delete, delete_with_spec,",
     "review, or all) by leveraging spoom's syntax-aware remover (requires the spoom",
@@ -317,6 +325,15 @@ unless SorbetDeadcode::Formatter::FORMATS.include?(options[:format])
                "(got '#{options[:format]}')."
   exit 1
 end
+
+# Resolve --kind into the set of definition kinds to report (default: methods only).
+kind_result = SorbetDeadcode::KindFilter.parse(options[:kind])
+unless kind_result.invalid.empty?
+  $stderr.puts "Error: --kind got unknown kind(s) #{kind_result.invalid.join(', ')}. " \
+               "Valid: #{SorbetDeadcode::KindFilter::ALL.join(', ')}, all."
+  exit 1
+end
+report_kinds = kind_result.kinds
 
 # Loud upfront heads-up the moment we know --dead-since is on, before the (also slow) analysis
 # even starts — the repo-wide per-name pickaxe is the most expensive thing the tool can do.
@@ -497,6 +514,11 @@ unless from_index
   refiners << SorbetDeadcode::Refiners::GraphqlRefiner.new(options[:project_root], mode: refiner_mode) unless options[:no_graphql]
   results = refiners.reduce(results) { |candidates, refiner| refiner.refine(candidates) }
 end
+
+# Restrict to the requested definition kinds (default: methods only) — for both a fresh analysis
+# and a loaded --report index, before verification/classification so ripgrep only runs on the
+# selected candidates.
+results = results.select { |definition| report_kinds.include?(definition.kind) }
 
 # --remove operates on classified action tiers, which need ripgrep verification.
 if options[:remove] && !options[:verify]
