@@ -14,30 +14,42 @@ Existing tools like [Spoom](https://github.com/Shopify/spoom) use **name-based**
 
 ## Installation
 
-Not published to RubyGems yet — **clone it and run it locally**. Requires Ruby >= 3.4; its only
-runtime dependency, [`prism`](https://github.com/ruby/prism), ships with Ruby 3.4+, so you do **not**
-need to `bundle install` just to run it.
+Not published to RubyGems yet — **clone it and run it locally**. Requires Ruby >= 3.4.
 
 ```bash
 # Clone once, anywhere outside your application repo:
 git clone https://github.com/corsonknowles/sorbet-deadcode.git ~/src/sorbet-deadcode
+
+# Nice-to-have: install its locked deps and run it under its own bundle (see below).
+cd ~/src/sorbet-deadcode && bundle install
 ```
+
+**Running under the gem's bundle (`bundle exec`) is a nice-to-have, not a hard requirement.** The
+only runtime dependency, [`prism`](https://github.com/ruby/prism), ships with Ruby 3.4+, so the core
+scan runs fine without bundler. Using the bundle just pins `prism` to the version this gem was tested
+against and isolates it from whatever gems your application pulls in — so it's the recommended way,
+and the examples below are written that way. (The spoom-backed flags need an extra opt-in step; see
+the end of this section.)
 
 ### Run it on your team's pack
 
 Run it **from your application's repo root** — that way the project root auto-detects from your git
-toplevel and the ripgrep verification covers the whole monorepo. Point Ruby at the cloned `lib/` and
-`exe/`:
+toplevel and the ripgrep verification covers the whole monorepo. Point the gem's bundle at its own
+`Gemfile` while you sit in your app's directory:
 
 ```bash
 cd ~/work/your-app                       # your application's git checkout
 G=~/src/sorbet-deadcode                  # wherever you cloned this tool
 
-ruby -I"$G/lib" "$G/exe/sorbet-deadcode" packs/my_team/my_pack/ --only safe_delete
+BUNDLE_GEMFILE="$G/Gemfile" bundle exec ruby "$G/exe/sorbet-deadcode" packs/my_team/my_pack/ --only safe_delete
 ```
 
-That's it. `--kind method` (dead methods only) and repo-wide ripgrep verification are the defaults;
+`--kind method` (dead methods only) and repo-wide ripgrep verification are the defaults;
 `--only safe_delete` narrows the output to the candidates that are safe to remove.
+
+> **No bundler?** It still works — drop the bundle prefix and add the gem's `lib/` to the load path:
+> `ruby -I"$G/lib" "$G/exe/sorbet-deadcode" packs/my_team/my_pack/ --only safe_delete`. You just lose
+> the pinned `prism` and can't use the spoom-backed flags.
 
 ### Make it a command (recommended)
 
@@ -46,7 +58,8 @@ your `~/.zshrc` / `~/.bashrc` (adjust the clone path):
 
 ```bash
 sorbet-deadcode() {
-  ruby -I"$HOME/src/sorbet-deadcode/lib" "$HOME/src/sorbet-deadcode/exe/sorbet-deadcode" "$@"
+  BUNDLE_GEMFILE="$HOME/src/sorbet-deadcode/Gemfile" \
+    bundle exec ruby "$HOME/src/sorbet-deadcode/exe/sorbet-deadcode" "$@"
 }
 ```
 
@@ -61,11 +74,12 @@ sorbet-deadcode packs/my_team/my_pack/ --only safe_delete
 > where you also want type-aware cross-pack resolution, add `--reference-root .` (slower — see
 > [Performance](#performance)).
 
-To pull in new fixes later, just `cd $G && git pull`.
+To pull in new fixes later, just `cd $G && git pull` (and re-run `bundle install` if its deps changed).
 
 The `spoom` gem is an **optional** dependency, required only for `--spoom`, `--verify-with-sorbet`,
-and `--remove` (syntax-aware removal). Reach for it by running `gem install spoom` (or `cd $G && bundle install`
-and invoke via `bundle exec` from the clone).
+and `--remove` (syntax-aware removal). It lives in an optional bundle group, so enable it once in the
+clone — `cd $G && bundle config set --local with spoom && bundle install` — and the `bundle exec`
+invocations above pick it up. (Or just `gem install spoom` if you're running without bundler.)
 
 ## Quick start
 
