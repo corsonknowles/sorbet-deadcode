@@ -31,21 +31,25 @@ module SorbetDeadcode
       DELEGATE_DSL_METHODS = %w[delegate].to_set.freeze
 
       # AASM `event :activate, after: [:notify], guard: :can_activate?` dispatches
-      # symbol names as callbacks or guards. Also handles `error_on_all_events :method` and the
+      # symbol names as callbacks or guards. Also handles `error_on_all_events :method`, the
       # per-transition `transitions from: :a, to: :b, after: :cb, success: :cb2, guard: :ok?` form
       # (its after/success/guard/etc. keys carry method names; from/to are state names, ignored
-      # because they aren't AASM_CALLBACK_KEYS).
+      # because they aren't AASM_CALLBACK_KEYS), and `state :x, before_enter: :m, after_exit: :n`
+      # state lifecycle callbacks.
       AASM_DSL_METHODS = %w[
         error_on_all_events
         aasm_event event transitions
+        aasm_state state
       ].to_set.freeze
 
-      # AASM event option keys whose value is a method name (or array of them) dispatched
-      # as a callback/guard during a transition: `event :activate, after: [:notify], guard: :can?`.
+      # AASM option keys whose value is a method name (or array of them) dispatched as a
+      # callback/guard. Covers event/transition callbacks (`event :activate, after: [:notify]`)
+      # and state lifecycle callbacks (`state :active, before_enter: :setup, after_exit: :teardown`).
       AASM_CALLBACK_KEYS = %w[
         after before guard unless success error ensure
         after_commit after_rollback on_transition
         before_transaction after_transaction
+        before_enter after_enter before_exit after_exit enter exit
       ].to_set.freeze
 
       # GraphQL-ruby DSL patterns that reference Ruby methods by symbol.
@@ -63,6 +67,16 @@ module SorbetDeadcode
       # Rails validation/callback conditional options whose value is a method name (or array of
       # them) invoked at validation/callback time: `validate :x, if: :ready?`, `unless: :skip?`.
       VALIDATOR_CONDITIONAL_KEYS = %w[if unless].to_set.freeze
+
+      # `validates` option-hash keys whose value MAY be a method-name symbol resolved against the
+      # record at validation time: `inclusion: { in: :allowed_kinds }`, `exclusion: { in: :blocked }`,
+      # `length: { minimum: :min_len }`, `numericality: { greater_than: :floor }`. Symbol values name
+      # a method supplying the bound/collection; non-symbol values (Integers, Procs, arrays of data)
+      # are ignored by collect_symbol_or_array.
+      VALIDATOR_METHOD_OPTION_KEYS = %w[
+        in within minimum maximum is greater_than greater_than_or_equal_to
+        less_than less_than_or_equal_to other_than equal_to
+      ].to_set.freeze
 
       # `validates` options that are NOT validators — every other key maps to a `<Key>Validator`
       # class. (`if`/`unless` are handled separately as conditional method references.)
@@ -696,6 +710,11 @@ module SorbetDeadcode
         key = assoc.key.slice.delete_suffix(":")
         if VALIDATOR_CONDITIONAL_KEYS.include?(key)
           collect_symbol_or_array(assoc.value, location) if handler.conditional_options?
+        elsif VALIDATOR_METHOD_OPTION_KEYS.include?(key) && handler.option_constants?
+          # `inclusion: { in: :allowed_kinds }` etc. — the symbol value names a method on the record
+          # that supplies the allowed set / bound at validation time. Scoped to the validates family
+          # (option_constants?) so a same-named key in another DSL isn't treated as a method ref.
+          collect_symbol_or_array(assoc.value, location)
         elsif handler.option_constants? && !VALIDATES_STANDARD_OPTIONS.include?(key)
           # `validates :x, strong_password: true` resolves to a `StrongPasswordValidator` class
           # instantiated by ActiveModel; keep that validator constant alive.

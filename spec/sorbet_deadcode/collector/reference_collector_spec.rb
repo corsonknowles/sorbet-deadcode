@@ -289,6 +289,20 @@ module SorbetDeadcode
         assert_includes refs.select { |r| r.kind == :method }.map(&:name), "handle_aasm_error"
       end
 
+      # #168: AASM `state :x, before_enter:/after_exit:/...` lifecycle callbacks dispatch method names.
+      def test_aasm_state_lifecycle_callbacks_emit_references
+        refs = collect(<<~RUBY)
+          class Order
+            state :verified, before_enter: :set_verified_at, after_exit: :clear_verified, enter: :log_entry
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "set_verified_at"
+        assert_includes names, "clear_verified"
+        assert_includes names, "log_entry"
+      end
+
       def test_graphql_builds_emits_build_method
         refs = collect(<<~RUBY)
           class CreateOrder < BaseMutation
@@ -588,6 +602,42 @@ module SorbetDeadcode
         names = refs.select { |r| r.kind == :method }.map(&:name)
         assert_includes names, "frequency_required?"  # if: conditional is a method
         refute_includes names, "frequency"            # validates positional arg is an attribute, not a method
+      end
+
+      # #168: `inclusion: { in: :method }` resolves the symbol as a method supplying the allowed set.
+      def test_validates_inclusion_in_symbol_emits_method_reference
+        refs = collect(<<~RUBY)
+          class Model
+            validates :employment_status, inclusion: { in: :allowed_employment_statuses }
+          end
+        RUBY
+
+        names = refs.select { |r| r.kind == :method }.map(&:name)
+        assert_includes names, "allowed_employment_statuses"
+        refute_includes names, "employment_status" # positional arg is an attribute, not a method
+      end
+
+      # #168: `length: { minimum: :method }` — numeric-bound options also accept a method symbol.
+      def test_validates_length_minimum_symbol_emits_method_reference
+        refs = collect(<<~RUBY)
+          class Model
+            validates :name, length: { minimum: :min_name_length }
+          end
+        RUBY
+
+        assert_includes refs.select { |r| r.kind == :method }.map(&:name), "min_name_length"
+      end
+
+      # #168: a constant collection (`in: CONST`) is NOT a method ref (kept alive as a constant).
+      def test_validates_inclusion_in_constant_is_not_a_method_reference
+        refs = collect(<<~RUBY)
+          class Model
+            validates :source, inclusion: { in: ALLOWED_SOURCES }
+          end
+        RUBY
+
+        refute_includes refs.select { |r| r.kind == :method }.map(&:name), "ALLOWED_SOURCES"
+        assert_includes refs.select { |r| r.kind == :constant }.map(&:name), "ALLOWED_SOURCES"
       end
 
       def test_callback_if_conditional_array_emits_method_references
