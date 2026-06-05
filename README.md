@@ -14,20 +14,58 @@ Existing tools like [Spoom](https://github.com/Shopify/spoom) use **name-based**
 
 ## Installation
 
-Requires Ruby >= 3.4.
+Not published to RubyGems yet — **clone it and run it locally**. Requires Ruby >= 3.4; its only
+runtime dependency, [`prism`](https://github.com/ruby/prism), ships with Ruby 3.4+, so you do **not**
+need to `bundle install` just to run it.
 
 ```bash
-gem install sorbet-deadcode
+# Clone once, anywhere outside your application repo:
+git clone https://github.com/corsonknowles/sorbet-deadcode.git ~/src/sorbet-deadcode
 ```
 
-Or add to your Gemfile:
+### Run it on your team's pack
 
-```ruby
-gem "sorbet-deadcode", group: :development
+Run it **from your application's repo root** — that way the project root auto-detects from your git
+toplevel and the ripgrep verification covers the whole monorepo. Point Ruby at the cloned `lib/` and
+`exe/`:
+
+```bash
+cd ~/work/your-app                       # your application's git checkout
+G=~/src/sorbet-deadcode                  # wherever you cloned this tool
+
+ruby -I"$G/lib" "$G/exe/sorbet-deadcode" packs/my_team/my_pack/ --only safe_delete
 ```
+
+That's it. `--kind method` (dead methods only) and repo-wide ripgrep verification are the defaults;
+`--only safe_delete` narrows the output to the candidates that are safe to remove.
+
+### Make it a command (recommended)
+
+So the rest of this README's `sorbet-deadcode …` examples work verbatim, add a shell function to
+your `~/.zshrc` / `~/.bashrc` (adjust the clone path):
+
+```bash
+sorbet-deadcode() {
+  ruby -I"$HOME/src/sorbet-deadcode/lib" "$HOME/src/sorbet-deadcode/exe/sorbet-deadcode" "$@"
+}
+```
+
+Reload your shell, then from your app's repo root:
+
+```bash
+sorbet-deadcode packs/my_team/my_pack/ --only safe_delete
+```
+
+> **Scoping note:** targeting a single pack only collects *references* from inside that pack, but the
+> default repo-wide ripgrep pass still catches cross-pack callers **by name**. For a bulk-delete audit
+> where you also want type-aware cross-pack resolution, add `--reference-root .` (slower — see
+> [Performance](#performance)).
+
+To pull in new fixes later, just `cd $G && git pull`.
 
 The `spoom` gem is an **optional** dependency, required only for `--spoom`, `--verify-with-sorbet`,
-and `--remove` (syntax-aware removal). Install it when you reach for those flags.
+and `--remove` (syntax-aware removal). Reach for it by running `gem install spoom` (or `cd $G && bundle install`
+and invoke via `bundle exec` from the clone).
 
 ## Quick start
 
