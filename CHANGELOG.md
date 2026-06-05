@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Changed
+- **`--cascade` now implies `--reference-root`** (#161) — the cascade drops references originating
+  inside dead methods, which is only sound with a cross-pack reference graph. Without one, an entry
+  point consumed from another pack looks unused and its whole helper tree cascades to a false
+  positive. `--cascade` now defaults the reference root to the project root (repo-wide) and prints a
+  one-line notice; an explicit `--reference-root DIR` still wins, and passing both flags is fine (no
+  error). Trades speed (whole-tree parse) for correctness.
+
 ## [0.2.0] - 2026-06-04
 
 ### Fixed

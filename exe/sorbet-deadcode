@@ -154,8 +154,10 @@ OptionParser.new do |opts|
   opts.on("--cascade",
     "Iterate to a fixpoint: after finding dead code, drop references that originate inside",
     "dead methods and recompute, surfacing transitively-dead code (e.g. a private helper",
-    "called only by a now-dead method). Newly-dead definitions are flagged `cascaded`. Best",
-    "paired with --verify-with-sorbet.") do
+    "called only by a now-dead method). Newly-dead definitions are flagged `cascaded`.",
+    "Implies --reference-root (defaults to the project root) so the cascade sees cross-pack",
+    "callers — without it, cross-pack-consumed helper trees cascade to false positives.",
+    "Pass --reference-root to override. Best paired with --verify-with-sorbet.") do
     options[:cascade] = true
   end
 
@@ -430,6 +432,17 @@ end
 if options[:cascade] && (mode_count.positive? || from_index)
   $stderr.puts "[sorbet-deadcode] --cascade only applies in the default mode; " \
                "ignoring it for --lsp/--hybrid/--file-table/--report."
+end
+
+# --cascade implies --reference-root: the cascade drops references originating in dead methods, which
+# is only sound with a CROSS-PACK reference graph. Without one, an entry point consumed from another
+# pack looks unused and its whole helper tree cascades to a false positive. Default the reference root
+# to the project root (repo-wide); an explicit --reference-root wins, and passing both is fine (#161).
+if options[:cascade] && options[:reference_root].nil? && mode_count.zero? && !from_index
+  options[:reference_root] = options[:project_root]
+  $stderr.puts "[sorbet-deadcode] --cascade implies --reference-root; using " \
+               "#{File.expand_path(options[:reference_root])} for a cross-pack reference graph " \
+               "(parses the whole tree — slower). Pass --reference-root to override."
 end
 
 results = if from_index

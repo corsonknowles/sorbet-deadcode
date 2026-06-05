@@ -224,7 +224,13 @@ definitions are flagged `cascaded`.
 sorbet-deadcode packs/my_pack/ --cascade --verify-with-sorbet
 ```
 
-Best paired with `--verify-with-sorbet`, since cascaded removals are larger and worth confirming.
+**`--cascade` implies `--reference-root`** (defaulting to the project root). Dropping references that
+originate in dead methods is only sound with a **cross-pack reference graph**: without one, an entry
+point that's consumed from *another* pack looks unused, so its entire helper tree cascades to a
+false positive. To stay correct, `--cascade` therefore parses the whole reference tree by default
+(which makes it slower — see [Performance](#performance)). Pass an explicit `--reference-root DIR` to
+narrow it; passing both flags is fine. Best paired with `--verify-with-sorbet`, since cascaded
+removals are larger and worth confirming.
 
 ### Git history annotations (`--history`, `--dead-since`)
 
@@ -520,7 +526,7 @@ cost ladder, cheapest to most expensive:
 | `--reference-root .` | Parses the **whole tree** for refs — **minutes** on a monorepo | Bulk-delete audits needing type-aware cross-refs |
 | `--spoom` | Runs Spoom's full engine on the same paths | Highest-confidence intersection |
 | `--verify-with-sorbet` | One full `srb tc` (+ trial edits) | Final confirmation before deleting |
-| `--cascade` | A few extra analysis passes (to a fixpoint) | Transitive dead-code cleanup |
+| `--cascade` | Implies `--reference-root` (whole-tree parse, **minutes**) + a few fixpoint passes | Transitive dead-code cleanup |
 | `--dead-since` | ⚠️ A **repo-wide** `git log -S` pickaxe **per unique candidate name** | Last — only on a small, final candidate set |
 
 ### The expensive one: `--dead-since`
@@ -548,7 +554,9 @@ single pack first, then re-run with `--dead-since` on just those.
   on your project, so is this flag. It snapshots/restores files, so it's safe to interrupt.
 - **`--spoom`** runs Spoom's own analysis on the same paths in addition to ours.
 - **`--cascade`** recomputes the dead set to a fixpoint — a handful of extra analysis passes over
-  the already-collected definitions, not a re-parse.
+  the already-collected definitions — but it **implies `--reference-root`** (defaulting to the
+  project root) for correctness, so it inherits that whole-tree parse cost. Pass an explicit
+  `--reference-root DIR` to narrow the scope.
 
 ## How It Works
 
