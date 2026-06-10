@@ -186,6 +186,7 @@ Each candidate may also carry **risk flags** that explain the action:
 | `public_api` | Lives on a public-API surface (see [`--public-paths`](#public-api-surface---public-paths)) |
 | `partial_accessor` | One dead half of an `attr_accessor` whose other half is live — narrow, don't delete the line |
 | `ivar_hazard` | Removing this writer would orphan the backing `@ivar` (a Sorbet error) — keep a typed declaration |
+| `writer` | A setter (`foo=` / `attr_writer`) — reachable via mass-assignment, so never auto-deleted (routed to `review`) |
 | `cascaded` | Became dead only after other dead code was (transitively) removed (`--cascade`) |
 | `recently_added` | Introduced recently (see `--max-age`) — likely in-flight work |
 | `kept_by:<source>` | Kept alive only by a non-Ruby source (with `--report-non-ruby`) |
@@ -510,6 +511,7 @@ convention that would otherwise produce false positives:
 | Validation conditionals | `validates :x, exclusion: { in: [...], unless: :skip? }` | Keeps `if:`/`unless:` guards alive, including nested hash options |
 | AASM transitions | `transitions from: :a, to: :b, after: :cb, guard: :ok?` | Keeps callback/guard targets alive |
 | `accepts_nested_attributes_for` | `accepts_nested_attributes_for :items` | Keeps `items_attributes=` overrides alive |
+| Mass-assignment setters | `Model.new(foo: x)`, `record.update!(foo: x)`, `find_or_initialize_by(foo: x)`, `assign_attributes`, `permit(:foo)` | Keeps the `foo=` setter alive (the key `foo:` never appears as `foo=`); setters are also never auto-deleted (see the `writer` flag) |
 | `delegate ..., to:` | `delegate :to_s, to: :writer` | Keeps the delegation target (`writer`) alive |
 | `Prism::Visitor` subclasses | `class MyVisitor < Prism::Visitor` | Keeps all `visit_*` methods alive |
 | Mailer previews | `class FooMailerPreview` | Keeps the class and all preview actions alive |
