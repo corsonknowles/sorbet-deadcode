@@ -24,6 +24,12 @@ module SorbetDeadcode
     # Matches files under spec/ or test/ directories, or *_spec.rb / *_test.rb.
     SPEC_PATH = %r{(?:^|/)(?:spec|test)/|_(?:spec|test)\.rb$}
 
+    # A setter method name: an identifier followed by a single trailing `=` (`foo=`,
+    # `session_endpoint=`). Deliberately excludes operator methods that also end in `=`
+    # (`==`, `<=`, `>=`, `!=`, `===`) and the index setter `[]=`, none of which are
+    # mass-assignment targets.
+    SETTER_NAME = /\A[A-Za-z_]\w*=\z/
+
     # Default public-surface path fragments. Packwerk exposes a pack's public API under
     # `app/public/`; definitions there may be consumed by other packs/services or at runtime
     # in ways the in-repo static graph can't see, so a zero-reference result is only a prompt
@@ -141,7 +147,21 @@ module SorbetDeadcode
       flags << :ivar_hazard if definition.ivar_hazard
       # Became dead only after other dead code was (transitively) removed (issue #136, --cascade).
       flags << :cascaded if definition.cascaded
+      # A setter (`foo=`) is the target of Rails mass-assignment (`Model.new(foo:)`,
+      # `record.update!(foo:)`, `assign_attributes`, strong-params `permit(:foo)`). Those call
+      # sites name the attribute as a symbol key (`foo:`), not the literal `foo=`, and may live
+      # in another pack, an engine, or a hash built at runtime — i.e. outside the analyzed scope.
+      # So an apparently-unreferenced writer is a mass-assignment hazard, never a safe delete.
+      flags << :writer if writer?(definition)
       flags
+    end
+
+    # True for a setter method — hand-written (`def foo=`) or generated (`attr_writer` /
+    # `attr_accessor`). See the :writer flag rationale in build_flags.
+    def writer?(definition)
+      return true if definition.kind == :attr_writer
+
+      definition.kind == :method && SETTER_NAME.match?(definition.name.to_s)
     end
 
     # True when the definition lives on a configured public-API surface.
@@ -154,6 +174,10 @@ module SorbetDeadcode
       # Public-API surface: never high confidence — a zero-reference result can't see
       # external/runtime consumers, so it's a review prompt, not a safe delete.
       return Analyzer::Confidence::LOW if flags.include?(:public_api)
+      # Setter with no visible references: it may still be written via mass-assignment from a
+      # caller outside the analyzed scope (another pack/engine, or a dynamically-built hash), so
+      # the zero-reference reading is unreliable. Never high confidence.
+      return Analyzer::Confidence::LOW if flags.include?(:writer) && external_count.zero?
       return Analyzer::Confidence::HIGH if external_count.zero?
       return Analyzer::Confidence::LOW if flags.include?(:live_reference) || flags.include?(:non_ruby_reference)
 
@@ -175,6 +199,12 @@ module SorbetDeadcode
       # Narrowing this accessor would orphan the backing `@ivar` (Sorbet error) → review so a
       # human keeps a typed declaration rather than blindly deleting the writer.
       return :review if flags.include?(:ivar_hazard)
+      # A setter with no references at all may still be reached by dynamic mass-assignment
+      # (`update!(foo:)`, `assign_attributes`, strong-params) from a caller the static graph
+      # can't see — a different pack, an engine, or a runtime-built attribute hash. Deleting it
+      # risks a runtime `ActiveModel::UnknownAttributeError`, so route to review rather than
+      # auto-deleting. Real callers in scope already keep it alive (returned :keep above).
+      return :review if flags.include?(:writer)
       # No references anywhere outside the definition. Reaching here means production_ruby,
       # spec_refs and non_ruby are all empty; since every external file falls into exactly
       # one of those buckets, external_count is necessarily 0 here.

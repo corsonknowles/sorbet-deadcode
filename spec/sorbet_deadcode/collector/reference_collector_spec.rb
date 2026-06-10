@@ -1598,6 +1598,35 @@ module SorbetDeadcode
         assert_includes refs.map(&:name), "charity_ein="
       end
 
+      def test_find_or_initialize_by_keyword_emits_writer_references
+        refs = collect("Model.find_or_initialize_by(app_connection: ac, charity_ein: ein)\n")
+        names = refs.map(&:name)
+        assert_includes names, "app_connection="
+        assert_includes names, "charity_ein="
+      end
+
+      def test_find_or_create_by_bang_keyword_emits_writer_references
+        refs = collect("Model.find_or_create_by!(charity_ein: ein)\n")
+        assert_includes refs.map(&:name), "charity_ein="
+      end
+
+      def test_first_or_create_keyword_emits_writer_references
+        refs = collect("relation.first_or_create(amount: amt)\n")
+        assert_includes refs.map(&:name), "amount="
+      end
+
+      # Regression for the mass-assignment writer false positive: a custom setter backing a
+      # virtual attribute (no DB column) is written only via `update!(foo: ...)` from elsewhere.
+      # The keyword key `foo:` must emit a `foo=` reference so the setter isn't reported dead.
+      def test_update_bang_keyword_emits_writer_reference_for_virtual_attribute
+        refs = collect(<<~RUBY)
+          record.update!(session_endpoint: session.endpoint, session_token: session.token)
+        RUBY
+        names = refs.map(&:name)
+        assert_includes names, "session_endpoint="
+        assert_includes names, "session_token="
+      end
+
       def test_non_mass_assignment_call_does_not_emit_writers
         refs = collect("some_helper(charity_ein: ein)\n")
         refute_includes refs.map(&:name), "charity_ein="

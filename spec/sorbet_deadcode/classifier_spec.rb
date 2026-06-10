@@ -93,6 +93,47 @@ module SorbetDeadcode
       assert_equal 0, result.external_reference_count
     end
 
+    # A setter with zero visible references must NOT be auto-deleted: it may be written via
+    # mass-assignment (`update!(foo:)`, `assign_attributes`, strong-params) from a caller outside
+    # the analyzed scope. Route to review at low confidence with a :writer flag.
+    def test_unreferenced_setter_method_is_review_not_safe_delete
+      path = write("app/foo.rb", "class Foo\n  def session_endpoint=(v)\n  end\nend\n")
+      result = classify_one(defn("session_endpoint=", location: "#{path}:2"))
+
+      assert_includes result.flags, :writer
+      assert_equal :review, result.suggested_action
+      assert_equal Analyzer::Confidence::LOW, result.confidence
+    end
+
+    def test_unreferenced_attr_writer_is_review_not_safe_delete
+      path = write("app/foo.rb", "class Foo\n  attr_writer :endpoint\nend\n")
+      result = classify_one(defn("endpoint", kind: :attr_writer, location: "#{path}:2"))
+
+      assert_includes result.flags, :writer
+      assert_equal :review, result.suggested_action
+    end
+
+    # Operator methods end in `=` but are not setters — they must keep normal safe_delete behavior.
+    def test_equality_operator_is_not_treated_as_writer
+      path = write("app/foo.rb", "class Foo\n  def ==(other)\n  end\nend\n")
+      result = classify_one(defn("==", location: "#{path}:2"))
+
+      refute_includes result.flags, :writer
+      assert_equal :safe_delete, result.suggested_action
+    end
+
+    # A setter with a literal `name=` reference (e.g. an explicit `send(:name=, ...)`) is still
+    # kept — the writer downgrade only intercepts the would-be-safe_delete, zero-reference case.
+    # (Note: a plain `obj.name = x` writes the spaced token `name =`, which the name-based
+    # reference search does not match — another reason setters are never auto-deleted.)
+    def test_setter_with_literal_reference_is_kept
+      path = write("app/foo.rb", "class Foo\n  def name=(v)\n  end\nend\n")
+      write("app/caller.rb", "Foo.new.send(:name=, 'x')\n")
+      result = classify_one(defn("name=", location: "#{path}:2"))
+
+      assert_equal :keep, result.suggested_action
+    end
+
     def test_production_reference_is_keep
       path = write("app/foo.rb", "class Foo\n  def used_method\n  end\nend\n")
       write("app/caller.rb", "Foo.new.used_method\n")

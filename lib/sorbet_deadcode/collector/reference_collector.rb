@@ -20,6 +20,9 @@ module SorbetDeadcode
         update update! update_columns update_attributes update_attributes!
         assign_attributes attributes= with
         insert insert! upsert
+        find_or_create_by find_or_create_by! find_or_initialize_by
+        create_or_find_by create_or_find_by!
+        first_or_create first_or_create! first_or_initialize
       ].to_set.freeze
 
       # Bulk-write methods that take an ARRAY of attribute hashes (`Model.insert_all([{a: 1}])`);

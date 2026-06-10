@@ -3,6 +3,19 @@
 ## Unreleased
 
 ### Fixed
+- **Attribute setters (`foo=`) are no longer auto-deleted as dead** (#171) — a setter is the target
+  of Rails mass-assignment (`Model.new(foo:)`, `record.update!(foo:)`, `assign_attributes`,
+  strong-params `permit(:foo)`). Those call sites name the attribute as a symbol key (`foo:`), not
+  the literal `foo=`, and frequently live in another pack/engine or in a hash built at runtime —
+  i.e. outside the analyzed scope. A setter found unreferenced is now flagged `writer`, downgraded
+  to low confidence, and routed to `review` instead of `safe_delete`, so deleting one can't break a
+  virtual attribute at runtime (`ActiveModel::UnknownAttributeError`). Operator methods that end in
+  `=` (`==`, `<=`, `>=`, `!=`, `===`) are not treated as setters.
+- **Mass-assignment scan covers more framework entry points** (#171) — `find_or_create_by`,
+  `find_or_create_by!`, `find_or_initialize_by`, `create_or_find_by`, `create_or_find_by!`,
+  `first_or_create`, `first_or_create!`, and `first_or_initialize` accept an attribute hash and
+  invoke the matching `key=` setters; their keyword keys now keep those setters alive, like the
+  existing `new`/`create`/`update`/`assign_attributes` handling.
 - **AASM `state` lifecycle callbacks no longer report their targets dead** (#168) — `state :verified,
   before_enter: :set_verified_at, after_exit: :teardown` dispatches those symbols as callbacks, but
   only `event`/`transitions` callbacks were recognized. `state`/`aasm_state` are now AASM DSL methods
