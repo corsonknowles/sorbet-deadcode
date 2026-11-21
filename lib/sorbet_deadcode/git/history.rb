@@ -95,10 +95,12 @@ module SorbetDeadcode
 
       # Repo-wide `git log -S name` commit lines, newest first. No `-p`, so output is one
       # "<short-sha> <yyyy-mm-dd> <subject>" line per commit that changed the count of `name`.
+      # --pickaxe-regex keeps -S's "count changed" semantics (unlike -G, which matches any changed
+      # line) while matching `name` as a whole identifier rather than a substring.
       def pickaxe_commit_lines(name)
         lines = []
         IO.popen(
-          ["git", "-C", @project_root, "log", "-S", name,
+          ["git", "-C", @project_root, "log", "-S", pickaxe_pattern(name), "--pickaxe-regex",
            "--format=%h %ad %s", "--date=short"],
           err: File::NULL,
         ) { |io| io.each_line { |line| lines << line.strip } }
@@ -107,10 +109,23 @@ module SorbetDeadcode
         []
       end
 
+      # `name` as a whole Ruby identifier, in POSIX ERE: git's regex dialect has no lookaround and
+      # no portable \b, so the boundaries are character classes (or line ends). `foo?`, `foo!` and
+      # `foo=` are different methods from `foo`, hence `?!=` in the trailing class.
+      def pickaxe_pattern(name)
+        literal = name.gsub(/[.\[\]()*+?{}|^$\\]/) { |char| "\\#{char}" }
+        "(^|[^[:alnum:]_])#{literal}([^[:alnum:]_?!=]|$)"
+      end
+
+      # The Ruby counterpart of #pickaxe_pattern.
+      def identifier_pattern(name)
+        /(?<!\w)#{Regexp.escape(name)}(?![\w?!=])/
+      end
+
       # { name => introducing-commit-line } for the given names, from one --follow -p pass over the
       # file's history (oldest first), recording the first commit that adds each name.
       def introductions(file, names)
-        pending = names.to_set
+        pending = names.to_h { |name| [name, identifier_pattern(name)] }
         result = {}
         current = nil
 
@@ -118,7 +133,8 @@ module SorbetDeadcode
           if line.start_with?(COMMIT_MARKER)
             current = line.byteslice(COMMIT_MARKER.bytesize..).to_s.strip
           elsif current && added_line?(line)
-            found = pending.select { |name| line.include?(name) }
+            content = line.scrub # an invalid byte would make the regex match raise
+            found = pending.select { |_name, pattern| content.match?(pattern) }.keys
             found.each do |name|
               result[name] = current
               pending.delete(name)

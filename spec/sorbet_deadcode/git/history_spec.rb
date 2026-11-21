@@ -60,6 +60,39 @@ module SorbetDeadcode
         assert_includes history.added(defn("method_b", path)), "Add method_b"
       end
 
+      # A name embedded in a longer identifier (`display_name`) doesn't introduce `name`.
+      def test_added_ignores_name_inside_a_longer_identifier
+        path = commit("app/foo.rb", "class Foo\n  def display_name; end\nend\n", "Add display_name")
+        File.write(path, "class Foo\n  def display_name; end\n  def name; end\nend\n")
+        git("add", "app/foo.rb")
+        git("commit", "-q", "-m", "Add name")
+
+        assert_includes History.new(@dir).prepare([defn("name", path)]).added(defn("name", path)), "Add name"
+      end
+
+      # `ready?` and `ready` are different methods.
+      def test_added_distinguishes_predicate_suffix
+        path = commit("app/foo.rb", "class Foo\n  def ready?; end\nend\n", "Add ready?")
+        File.write(path, "class Foo\n  def ready?; end\n  def ready; end\nend\n")
+        git("add", "app/foo.rb")
+        git("commit", "-q", "-m", "Add ready")
+
+        history = History.new(@dir).prepare([defn("ready", path), defn("ready?", path)])
+
+        assert_match(/ Add ready\z/, history.added(defn("ready", path)))
+        assert_includes history.added(defn("ready?", path)), "Add ready?"
+      end
+
+      # A diff line that isn't valid UTF-8 must not abort the pass.
+      def test_added_survives_invalid_utf8_in_diff
+        path = commit("app/foo.rb", "class Foo\n  # \xFF\nend\n".b, "Add invalid byte")
+        File.write(path, "class Foo\n  # \xFF\n  def bar; end\nend\n".b)
+        git("add", "app/foo.rb")
+        git("commit", "-q", "-m", "Add bar")
+
+        assert_includes History.new(@dir).prepare([defn("bar", path)]).added(defn("bar", path)), "Add bar"
+      end
+
       def test_added_returns_nil_for_name_never_introduced
         path = commit("app/foo.rb", "class Foo\n  def bar; end\nend\n", "Introduce bar")
         d = defn("never_defined_here", path)
@@ -127,6 +160,42 @@ module SorbetDeadcode
 
         assert_includes history.dead_since(d), "dead since"
         assert_includes history.dead_since(d), "Remove orphaned_method caller"
+      end
+
+      # Calls to a longer identifier (`lonely_method_helper`) don't change `lonely_method`'s count.
+      def test_dead_since_ignores_name_inside_a_longer_identifier
+        path = commit("app/foo.rb", "class Foo\n  def lonely_method; end\nend\n", "Add lonely_method")
+        commit("app/caller.rb", "Foo.new.lonely_method_helper\n", "Call lonely_method_helper")
+        d = defn("lonely_method", path)
+
+        history = nil
+        capture_io { history = History.new(@dir, dead_since: true).prepare([d]) }
+
+        assert_includes history.dead_since(d), "dead-on-arrival"
+      end
+
+      # Calls to `ready?` don't change the count of `ready`, a different method.
+      def test_dead_since_distinguishes_predicate_suffix
+        path = commit("app/foo.rb", "class Foo\n  def ready; end\nend\n", "Add ready")
+        commit("app/caller.rb", "Foo.new.ready?\n", "Call ready?")
+        d = defn("ready", path)
+
+        history = nil
+        capture_io { history = History.new(@dir, dead_since: true).prepare([d]) }
+
+        assert_includes history.dead_since(d), "dead-on-arrival"
+      end
+
+      # The name is matched literally: `ready?` isn't a regex that also matches `ready`.
+      def test_dead_since_matches_name_literally
+        path = commit("app/foo.rb", "class Foo\n  def ready?; end\nend\n", "Add ready?")
+        commit("app/caller.rb", "Foo.new.ready\n", "Call ready")
+        d = defn("ready?", path)
+
+        history = nil
+        capture_io { history = History.new(@dir, dead_since: true).prepare([d]) }
+
+        assert_includes history.dead_since(d), "dead-on-arrival"
       end
 
       def test_dead_since_nil_when_name_never_appears
