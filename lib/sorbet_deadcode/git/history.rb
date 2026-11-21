@@ -98,7 +98,7 @@ module SorbetDeadcode
       def pickaxe_commit_lines(name)
         lines = []
         IO.popen(
-          ["git", "-C", @project_root, "log", "-S", name,
+          ["git", "-C", @project_root, "log", "-S", pickaxe_pattern(name), "--pickaxe-regex",
            "--format=%h %ad %s", "--date=short"],
           err: File::NULL,
         ) { |io| io.each_line { |line| lines << line.strip } }
@@ -107,10 +107,20 @@ module SorbetDeadcode
         []
       end
 
+      # `name` as a whole identifier in POSIX ERE, which has no lookaround or portable \b.
+      def pickaxe_pattern(name)
+        literal = name.gsub(/[.\[\]()*+?{}|^$\\]/) { |char| "\\#{char}" }
+        "(^|[^[:alnum:]_])#{literal}([^[:alnum:]_?!=]|$)"
+      end
+
+      def identifier_pattern(name)
+        /(?<!\w)#{Regexp.escape(name)}(?![\w?!=])/
+      end
+
       # { name => introducing-commit-line } for the given names, from one --follow -p pass over the
       # file's history (oldest first), recording the first commit that adds each name.
       def introductions(file, names)
-        pending = names.to_set
+        pending = names.to_h { |name| [name, identifier_pattern(name)] }
         result = {}
         current = nil
 
@@ -118,7 +128,8 @@ module SorbetDeadcode
           if line.start_with?(COMMIT_MARKER)
             current = line.byteslice(COMMIT_MARKER.bytesize..).to_s.strip
           elsif current && added_line?(line)
-            found = pending.select { |name| line.include?(name) }
+            content = line.scrub # match? raises on invalid UTF-8
+            found = pending.select { |_name, pattern| content.match?(pattern) }.keys
             found.each do |name|
               result[name] = current
               pending.delete(name)

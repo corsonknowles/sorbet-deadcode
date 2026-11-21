@@ -3,6 +3,9 @@
 ## Unreleased
 
 ### Fixed
+- **`--history` / `--dead-since` match a name as a whole identifier, not a substring** — `name` is
+  no longer "added" by `def display_name` or orphaned by a call to `rename`, and `foo?`, `foo!` and
+  `foo=` count as different names from `foo`.
 - **Attribute setters (`foo=`) are no longer auto-deleted as dead** (#171) — a setter is the target
   of Rails mass-assignment (`Model.new(foo:)`, `record.update!(foo:)`, `assign_attributes`,
   strong-params `permit(:foo)`). Those call sites name the attribute as a symbol key (`foo:`), not
