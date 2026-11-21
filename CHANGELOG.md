@@ -3,6 +3,8 @@
 ## Unreleased
 
 ### Fixed
+- **`--lsp`/`--hybrid` query methods ending in `?`, `!` or `=` at their name, not column 0** — they
+  were checked against whatever sat at the start of the line, so the verdict could be wrong.
 - **Attribute setters (`foo=`) are no longer auto-deleted as dead** (#171) — a setter is the target
   of Rails mass-assignment (`Model.new(foo:)`, `record.update!(foo:)`, `assign_attributes`,
   strong-params `permit(:foo)`). Those call sites name the attribute as a symbol key (`foo:`), not

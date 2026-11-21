@@ -146,7 +146,7 @@ module SorbetDeadcode
 
         case defn.kind
         when :method
-          match = source_line.match(/\bdef\s+(self\.)?#{Regexp.escape(defn.name)}\b/)
+          match = source_line.match(/\bdef\s+(self\.)?#{Regexp.escape(defn.name)}(?![\w?!=])/)
           if match
             name_start = match.begin(0) + match[0].index(defn.name)
             return name_start
