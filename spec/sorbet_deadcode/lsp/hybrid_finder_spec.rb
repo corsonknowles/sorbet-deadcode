@@ -160,6 +160,17 @@ module SorbetDeadcode
         FileUtils.remove_entry(dir) if dir
       end
 
+      def test_detect_column_method_with_a_punctuated_name
+        dir = Dir.mktmpdir
+        file = write_file(dir, "app.rb", "  def ok?\n  def save!(x)\n  def name=(v)\n")
+        finder = make_finder(dir)
+        assert_equal 6, finder.send(:detect_column, file, 0, make_defn("ok?", :method, "#{file}:1"))
+        assert_equal 6, finder.send(:detect_column, file, 1, make_defn("save!", :method, "#{file}:2"))
+        assert_equal 6, finder.send(:detect_column, file, 2, make_defn("name=", :method, "#{file}:3"))
+      ensure
+        FileUtils.remove_entry(dir) if dir
+      end
+
       def test_detect_column_method_self_dot
         dir = Dir.mktmpdir
         file = write_file(dir, "app.rb", "  def self.my_method\n  end\n")
