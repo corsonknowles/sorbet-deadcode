@@ -91,10 +91,12 @@ module SorbetDeadcode
       end
 
       def start_server
-        @stdin, @stdout, @stderr_thread, @wait_thread = Open3.popen3(
+        @stdin, @stdout, stderr, @wait_thread = Open3.popen3(
           "bundle", "exec", "srb", "tc", "--lsp", "--disable-watchman",
           chdir: @project_root,
         )
+        # Drain stderr so a chatty server can't fill the pipe and stall.
+        @stderr_thread = Thread.new { stderr.read }
         @started = true
         @opened_files = Set.new
       end

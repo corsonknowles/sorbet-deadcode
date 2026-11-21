@@ -30,6 +30,7 @@ module SorbetDeadcode
 
         stdin_read, stdin_write = IO.pipe
         stdout_read, stdout_write = IO.pipe
+        stderr_read, stderr_write = IO.pipe
 
         responder = Thread.new do
           write_lsp_message(stdout_write, { "jsonrpc" => "2.0", "id" => 1, "result" => { "capabilities" => {} } })
@@ -39,14 +40,16 @@ module SorbetDeadcode
         drainer = Thread.new { stdin_read.read rescue nil }
 
         client = nil
-        Open3.stub(:popen3, [stdin_write, stdout_read, nil, FakeWaitThread.new(alive: false)]) do
+        Open3.stub(:popen3, [stdin_write, stdout_read, stderr_read, FakeWaitThread.new(alive: false)]) do
           suppress_stderr { client = Client.new(dir) }
         end
 
         assert_equal File.expand_path(dir), client.project_root
         responder.join
+        stderr_write.write("server log line\n")
+        stderr_write.close
         stdout_write.close
-        stdin_write.close
+        client.shutdown
         drainer.join
       ensure
         FileUtils.remove_entry(dir) if dir
