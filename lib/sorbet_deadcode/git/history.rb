@@ -95,8 +95,6 @@ module SorbetDeadcode
 
       # Repo-wide `git log -S name` commit lines, newest first. No `-p`, so output is one
       # "<short-sha> <yyyy-mm-dd> <subject>" line per commit that changed the count of `name`.
-      # --pickaxe-regex keeps -S's "count changed" semantics (unlike -G, which matches any changed
-      # line) while matching `name` as a whole identifier rather than a substring.
       def pickaxe_commit_lines(name)
         lines = []
         IO.popen(
@@ -109,15 +107,12 @@ module SorbetDeadcode
         []
       end
 
-      # `name` as a whole Ruby identifier, in POSIX ERE: git's regex dialect has no lookaround and
-      # no portable \b, so the boundaries are character classes (or line ends). `foo?`, `foo!` and
-      # `foo=` are different methods from `foo`, hence `?!=` in the trailing class.
+      # `name` as a whole identifier in POSIX ERE, which has no lookaround or portable \b.
       def pickaxe_pattern(name)
         literal = name.gsub(/[.\[\]()*+?{}|^$\\]/) { |char| "\\#{char}" }
         "(^|[^[:alnum:]_])#{literal}([^[:alnum:]_?!=]|$)"
       end
 
-      # The Ruby counterpart of #pickaxe_pattern.
       def identifier_pattern(name)
         /(?<!\w)#{Regexp.escape(name)}(?![\w?!=])/
       end
@@ -133,7 +128,7 @@ module SorbetDeadcode
           if line.start_with?(COMMIT_MARKER)
             current = line.byteslice(COMMIT_MARKER.bytesize..).to_s.strip
           elsif current && added_line?(line)
-            content = line.scrub # an invalid byte would make the regex match raise
+            content = line.scrub # match? raises on invalid UTF-8
             found = pending.select { |_name, pattern| content.match?(pattern) }.keys
             found.each do |name|
               result[name] = current
